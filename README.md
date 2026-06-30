@@ -1,19 +1,24 @@
 # ThoughtVault
 
-ThoughtVault is a local-first personal knowledge system for turning local files, AI conversation memos, project documents, and personal records into a structured, searchable, self-growing knowledge base.
+ThoughtVault is a local-first personal memory and knowledge system.
+
+It helps users recall past projects, retrieve personal or work reference information, and turn scattered project materials or memos into structured knowledge notes, while keeping every generated result traceable to source files.
 
 The project starts from a simple idea:
 
-> Keep the original files local, let the system parse and index them, then use local AI to summarize, connect, and organize knowledge over time.
+> Keep original files local, build a searchable memory index from them, and use AI to help recall, retrieve, synthesize, and extend what the user has touched before.
 
 ## Goals
 
-- Build a local knowledge base from folders such as projects, Obsidian notes, company records, and personal memos.
+- Build a local memory index from folders such as projects, reference documents, company records, personal files, Obsidian notes, and AI conversation memos.
 - Preserve original files as the source of truth.
+- Support project recall: recover project details, technologies used, decisions made, and lessons learned.
+- Support reference retrieval: find and reuse information from past submissions, forms, company materials, and personal records.
+- Support synthesis: organize project knowledge and scattered philosophical memos into structured notes, technical references, and thought extensions.
 - Generate structured Markdown notes that remain portable and Obsidian-friendly.
-- Provide a local Web UI for search, browsing, relationship discovery, and review.
+- Provide a local Web UI for search, recall, browsing, synthesis, relationship discovery, and review.
 - Support local AI through Ollama first, with optional cloud AI later.
-- Make knowledge growth incremental: new files are detected, indexed, summarized, and linked to existing knowledge.
+- Make the memory base incremental: new files are detected, indexed, summarized, and linked to existing material.
 
 ## Non-Goals
 
@@ -21,41 +26,84 @@ The project starts from a simple idea:
 - It does not upload private files by default.
 - It does not let AI rewrite or replace source files automatically.
 - It does not try to understand the entire folder in one large prompt.
+- It does not treat every file the same way: project archives, reference materials, and personal memos require different processing.
 
 ## First Use Case
 
-The initial target user is someone who keeps mixed local materials:
+The initial target user is someone who keeps mixed local materials and wants three outcomes:
 
-- project documents such as requirements, basic design, detailed design, and operation manuals
-- Obsidian notes and scattered raw thoughts
-- company-related files such as salary slips, application records, and personal administrative documents
+- recall past projects and recover forgotten details
+- retrieve and reuse information from past reference files
+- synthesize scattered notes, project materials, and philosophical memos into durable knowledge
+
+Expected source folders include:
+
+- project documents such as requirements, basic design, detailed design, operation manuals, source notes, and handover files
+- reference materials such as attendance records, application records, company information, personal administrative documents, and reusable form data
+- Obsidian notes and scattered philosophical memos
 - copied AI conversations saved as Markdown or text memos
 
-ThoughtVault should help convert these materials into:
+ThoughtVault should help produce:
 
-- source-backed summaries
-- project overview pages
-- concept notes
-- timelines
-- tags
-- search index
+- source-backed recall answers
+- project detail pages
+- project timelines
+- technology and knowledge notes extracted from projects
+- reusable reference cards
+- classified and extended memo notes
 - local AI Q&A with citations
+
+## Product Modes
+
+### Recall Mode
+
+Recall Mode helps the user recover things they have touched before but no longer remember clearly.
+
+Example questions:
+
+- What projects did I work on that involved FastAPI?
+- What technologies did this project use?
+- What problem did I solve in that migration project?
+- Where did I write about a specific philosophical idea?
+
+The answer should include direct evidence, source files, dates or time hints when available, and AI-assisted summaries.
+
+### Reference Mode
+
+Reference Mode helps the user retrieve and reuse factual information from past files.
+
+Example questions:
+
+- Where is the attendance form I submitted?
+- What company information did I use in a past application?
+- Which file contains this personal or administrative detail?
+
+This mode should prioritize precision, source links, and low hallucination over creative synthesis.
+
+### Synthesis Mode
+
+Synthesis Mode helps the user turn past exposure into structured knowledge.
+
+For project folders, this means extracting technologies, decisions, problems, solutions, lessons, and technical notes similar to learning references or technical blog posts.
+
+For Obsidian or memo folders, this means clustering themes, organizing philosophical ideas, finding recurring questions, and extending incomplete thoughts.
 
 ## Repository Structure
 
 ```text
 thoughtvault/
-├─ docs/
-│  ├─ 01-product-vision.md
-│  ├─ 02-roadmap.md
-│  ├─ 03-architecture.md
-│  ├─ 04-data-model.md
-│  ├─ 05-processing-pipeline.md
-│  ├─ 06-output-design.md
-│  └─ 07-decisions-and-open-questions.md
-├─ examples/
-│  └─ memo-example.md
-└─ src/
+|-- docs/
+|   |-- 01-product-vision.md
+|   |-- 02-roadmap.md
+|   |-- 03-architecture.md
+|   |-- 04-data-model.md
+|   |-- 05-processing-pipeline.md
+|   |-- 06-output-design.md
+|   |-- 07-decisions-and-open-questions.md
+|   `-- 08-product-modes.md
+|-- examples/
+|   `-- memo-example.md
+`-- src/
 ```
 
 ## Planned Tech Stack
@@ -77,4 +125,4 @@ Planning stage. The current repository contains the product direction, architect
 
 ## Next Step
 
-The next implementation milestone is Phase 1: local scanner and basic SQLite metadata index.
+The next implementation milestone is Phase 1: local scanner and basic SQLite metadata index, with the product framed around Recall Mode, Reference Mode, and Synthesis Mode.

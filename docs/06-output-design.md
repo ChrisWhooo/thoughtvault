@@ -13,13 +13,22 @@ Suggested structure:
 
 ```text
 Vault/
-├─ _Index.md
-├─ Projects/
-├─ Concepts/
-├─ Sources/
-├─ Memos/
-├─ Timelines/
-└─ Reviews/
+|-- _Index.md
+|-- Sources/
+|-- Recall/
+|   |-- Projects/
+|   |-- Timelines/
+|   `-- Technologies/
+|-- References/
+|-- Knowledge/
+|   |-- Technical/
+|   |-- Concepts/
+|   `-- Lessons/
+|-- Memos/
+|   |-- Themes/
+|   |-- Thoughts/
+|   `-- Extensions/
+`-- Reviews/
 ```
 
 ## Source Archive Note
@@ -29,119 +38,160 @@ Generated from one source file.
 ```markdown
 ---
 type: source
-source_path: Projects/vMotion/基本設計書.xlsx
+source_path: Projects/Migration/basic-design.xlsx
+source_hash: ...
 generated_by: thoughtvault
 status: generated
 ---
 
-# 基本設計書
+# basic-design.xlsx
 
 ## Summary
 
 This file describes...
 
-## Key Points
+## Extracted Traces
 
-- ...
+- project: ...
+- technologies: ...
+- dates: ...
 
 ## Source
 
-- Projects/vMotion/基本設計書.xlsx
+- Projects/Migration/basic-design.xlsx
 ```
 
-## Project Overview Note
+## Project Recall Page
 
 Generated from a project folder.
 
 ```markdown
 ---
-type: project
-project: vMotion Migration
+type: project_recall
+project: Migration Project
 generated_by: thoughtvault
 status: generated
 ---
 
-# vMotion Migration
+# Migration Project
 
-## Overview
+## What This Project Was
 
 ...
 
-## Documents
+## Timeline
 
-- [[Sources/要件定義書]]
-- [[Sources/基本設計書]]
-- [[Sources/手順書]]
+- ...
+
+## Technologies Used
+
+- ...
 
 ## Decisions
 
 - ...
 
-## Open Questions
+## Problems and Solutions
 
 - ...
+
+## Source Documents
+
+- [[Sources/basic-design]]
+- [[Sources/operation-manual]]
 ```
 
-## Concept Note
+## Technical Knowledge Note
 
-Generated from repeated themes across files.
+Generated from project materials when there is reusable learning value.
 
 ```markdown
 ---
-type: concept
-tags:
-  - VMware
-  - vMotion
+type: technical_note
+topic: SQLite FTS5
+derived_from:
+  - Projects/ThoughtVault/docs/03-architecture.md
 generated_by: thoughtvault
 status: suggested
 ---
 
-# Cross-Cluster Migration
+# SQLite FTS5 for Local Knowledge Search
 
-## Definition
+## Context
+
+This note was derived from project materials where SQLite FTS5 was considered for local full-text search.
+
+## Explanation
 
 ...
 
-## Related Sources
+## When To Use
 
-- Projects/vMotion/...
+...
 
-## Related Concepts
+## Source Evidence
 
-- [[EVC]]
-- [[vGPU]]
-- [[Offline Migration]]
+- Projects/ThoughtVault/docs/03-architecture.md
 ```
 
-## Memo-Derived Note
+## Reference Card
 
-Used when the user copies AI conversation content into a memo file.
+Generated from factual reference materials.
 
 ```markdown
 ---
-type: memo_note
-source: Memos/2026-06-30_knowledge-base.md
+type: reference_card
+category: application
+sensitivity: medium
 generated_by: thoughtvault
-status: suggested
+status: generated
 ---
 
-# Memo-first Knowledge Workflow
+# Application Record - 2026-06
 
-## User Original Thought
+## Key Facts
 
-> ...
-
-## AI-Assisted Summary
-
-...
-
-## Durable Knowledge
-
-...
+| Field | Value | Source |
+|---|---|---|
+| submitted_date | ... | ... |
+| organization | ... | ... |
 
 ## Source
 
-- [[Memos/2026-06-30_knowledge-base_raw]]
+- Company/applications/...
+```
+
+Reference cards should avoid unsupported inference. If a field is uncertain, mark it uncertain.
+
+## Memo Concept Note
+
+Generated from Obsidian notes or loose memos.
+
+```markdown
+---
+type: concept_note
+topic: Personal Memory
+generated_by: thoughtvault
+status: suggested
+---
+
+# Personal Memory
+
+## Core Idea
+
+...
+
+## Related Notes
+
+- [[Memos/2026-06-30-memory-system]]
+
+## Open Questions
+
+- ...
+
+## Thought Extension
+
+...
 ```
 
 ## Web UI Views
@@ -150,6 +200,7 @@ status: suggested
 
 Shows:
 
+- total sources
 - total files
 - indexed files
 - failed files
@@ -161,46 +212,53 @@ Shows:
 Supports:
 
 - keyword search
+- trace search
 - semantic search
-- filter by category
+- filter by source category
 - filter by file type
 - filter by tag
 
-### Document Detail
+### Recall
+
+Supports:
+
+- project recall
+- technology recall
+- timeline recall
+- "where did I touch this before?" questions
+
+### Reference
+
+Supports:
+
+- factual lookup
+- reference cards
+- sensitive information warnings
+- source-backed answers
+
+### Synthesis
+
+Supports:
+
+- technical notes
+- project lessons
+- memo clustering
+- philosophical concept pages
+- thought extensions
+
+### Review
 
 Shows:
 
-- original metadata
-- extracted text preview
-- chunks
-- summary
-- tags
-- related files
-
-### Growth Review
-
-Shows:
-
-- newly found files
-- changed files
-- suggested summaries
-- suggested tags
-- suggested relations
-
-### Project Page
-
-Shows:
-
-- project overview
-- source documents
-- decisions
-- open questions
-- timeline
-- related concepts
+- newly generated recall items
+- reference cards
+- synthesis notes
+- stale outputs after source file changes
 
 ## Output Rule
 
 Markdown must be useful even without the Web UI.
 
-Web UI must never be the only place where important knowledge exists.
+Web UI must never be the only place where important memory, reference, or knowledge exists.
 
+Generated outputs must keep source references.

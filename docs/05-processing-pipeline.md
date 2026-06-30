@@ -3,28 +3,46 @@
 ## Pipeline Overview
 
 ```text
-1. Scan
-2. Classify
-3. Extract
-4. Chunk
-5. Index
-6. Summarize
-7. Link
-8. Export
-9. Review
+1. Configure sources
+2. Scan
+3. Classify
+4. Extract
+5. Chunk
+6. Extract traces
+7. Index
+8. Run mode-specific processing
+9. Export
+10. Review
 ```
 
-## 1. Scan
+## 1. Configure Sources
 
-The scanner walks through the configured knowledge root.
+The user selects local folders and assigns one or more categories.
+
+Examples:
+
+| Folder | Categories |
+|---|---|
+| `Projects/` | project |
+| `Work/Forms/` | reference, company |
+| `Personal/Admin/` | reference, personal |
+| `Obsidian/` | memo |
+| `AI-Conversations/` | conversation, memo |
+
+Categories guide later processing. A project folder should produce recall and knowledge notes. A reference folder should prioritize accurate retrieval. A memo folder should support clustering and thought extension.
+
+## 2. Scan
+
+The scanner walks through configured source roots.
 
 It records:
 
-- path
+- root-relative path
 - file type
 - size
 - modified time
 - content hash
+- source category
 
 It compares the new scan with the previous scan.
 
@@ -35,23 +53,24 @@ Possible states:
 - unchanged
 - deleted
 
-## 2. Classify
+## 3. Classify
 
-The system classifies files by path and file type.
+The system classifies files by source root, path, file type, and optional rules.
 
 Example rules:
 
 | Path Pattern | Category |
 |---|---|
 | `Projects/` | project |
-| `Obsidian/` | obsidian |
-| `Company/salary/` | company_salary |
-| `Company/applications/` | company_application |
+| `Obsidian/` | memo |
+| `Company/salary/` | reference, company |
+| `Company/applications/` | reference, company |
+| `Personal/forms/` | reference, personal |
 | `Memos/` | memo |
 
-Classification should be configurable.
+Classification should be configurable and reversible.
 
-## 3. Extract
+## 4. Extract
 
 Each supported file is converted into text.
 
@@ -63,8 +82,12 @@ Extraction should preserve useful hints:
 - Excel sheet name
 - Word heading
 - Markdown heading
+- AI conversation speaker marker
+- file modified time
 
-## 4. Chunk
+Failures should be recorded, not hidden.
+
+## 5. Chunk
 
 Long extracted text is split into smaller chunks.
 
@@ -72,18 +95,51 @@ Chunking strategy:
 
 - prefer headings and section boundaries
 - keep page or sheet hints
+- keep speaker markers in conversation files
 - avoid cutting tables in the middle when possible
 - keep stable chunk indexes
 
-## 5. Index
+Chunks are technical retrieval units. They are not automatically user-facing knowledge.
 
-The system builds two possible indexes.
+## 6. Extract Traces
+
+Traces are searchable clues that help future recall.
+
+Trace extraction should identify:
+
+- project names
+- technology names
+- company names
+- dates
+- people
+- commands
+- URLs
+- file titles
+- headings
+- form fields
+- error messages
+- philosophical concepts
+- recurring phrases
+
+Trace extraction can begin with simple rules and expand to AI-assisted extraction later.
+
+## 7. Index
+
+The system builds multiple indexes.
 
 Full-text index:
 
 - exact keyword search
 - snippets
 - fast local search
+
+Trace index:
+
+- technology names
+- project names
+- dates
+- fields
+- concepts
 
 Vector index:
 
@@ -93,43 +149,70 @@ Vector index:
 
 Vector indexing can be optional in early versions.
 
-## 6. Summarize
+## 8. Run Mode-Specific Processing
 
-AI summarization should happen at multiple levels.
+### Recall Processing
 
-| Level | Input | Output |
-|---|---|---|
-| Chunk | one chunk | local key points |
-| File | chunks from one file | file summary |
-| Folder | files in one folder | folder summary |
-| Project | project folder | project overview |
+Used for project archives, memos, and conversations.
 
-AI output should keep source references.
+Possible outputs:
 
-## 7. Link
+- project summary
+- project timeline
+- technologies used
+- decisions
+- problems and solutions
+- "things I touched before" recall items
 
-The system suggests relationships.
+Recall answers must include source evidence.
 
-Examples:
+### Reference Processing
 
-- this file belongs to this project
-- this handover note updates this old design note
-- this memo relates to this concept
-- this project document mentions the same technology as another project
+Used for personal, company, administrative, and form-like materials.
 
-Relations are suggestions until accepted.
+Possible outputs:
 
-## 8. Export
+- reference cards
+- extracted dates
+- extracted fields
+- source-backed factual answers
+
+Reference processing should avoid creative interpretation. It should say when evidence is missing or uncertain.
+
+### Synthesis Processing
+
+Used for project learning and memo organization.
+
+Project synthesis outputs:
+
+- technical notes
+- architecture explanations
+- lessons learned
+- reusable knowledge pages
+
+Memo synthesis outputs:
+
+- theme clusters
+- concept notes
+- thought extensions
+- essay outlines
+- contradictions or open questions
+
+Synthesis can be more interpretive, but important claims still need source links.
+
+## 9. Export
 
 The exporter creates Markdown output.
 
 Possible outputs:
 
-- raw source index
-- folder overview
-- project overview
+- source index
+- project recall page
+- project timeline
+- technology note
+- reference card
 - concept note
-- timeline note
+- thought extension
 - AI conversation archive
 - memo-derived knowledge note
 
@@ -137,10 +220,11 @@ Generated notes should include:
 
 - frontmatter
 - source references
+- source hashes
 - generated timestamp
 - status
 
-## 9. Review
+## 10. Review
 
 The user reviews suggested changes.
 
@@ -152,7 +236,7 @@ Review actions:
 - merge
 - postpone
 
-Confirmed knowledge becomes durable. Rejected suggestions should not be repeatedly suggested unless the source changes.
+Confirmed outputs become durable. Rejected suggestions should not be repeatedly suggested unless the source changes.
 
 ## Important Rule
 
@@ -165,8 +249,8 @@ Send entire folder to AI
 Design it as:
 
 ```text
-Break files into traceable tasks
-Generate small source-backed outputs
+Extract source-backed evidence
+Build searchable traces
+Generate mode-specific outputs
 Let the user confirm important knowledge
 ```
-

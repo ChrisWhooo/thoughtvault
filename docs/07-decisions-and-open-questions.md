@@ -4,13 +4,30 @@ This document records early product and technical decisions. It should be update
 
 ## Confirmed Decisions
 
+### ThoughtVault is a personal memory and knowledge system
+
+ThoughtVault should not be framed only as a knowledge base.
+
+It has three first-class goals:
+
+- recall past projects and forgotten details
+- retrieve and reuse personal or work reference information
+- synthesize project materials and memos into durable knowledge notes
+
+Reason:
+
+- the user may remember only fragments of past exposure
+- project archives need復盤, not only search
+- reference materials need accurate lookup, not creative summarization
+- Obsidian and philosophical memos need classification, synthesis, and thought extension
+
 ### Local-first by default
 
 The default workflow should run locally and should not upload private files.
 
 Reason:
 
-- the knowledge base may contain company documents, salary slips, personal records, and private AI conversations
+- the memory base may contain company documents, salary slips, personal records, and private AI conversations
 - privacy is part of the product value
 - local-first makes the project more suitable for open source users
 
@@ -21,8 +38,32 @@ ThoughtVault should not edit original source files automatically.
 Reason:
 
 - project documents and company records should remain unchanged
-- generated knowledge should be traceable
+- generated memory and knowledge should be traceable
 - AI output may be wrong and should not overwrite source truth
+
+### Source categories drive processing
+
+Project, reference, memo, conversation, personal, and company sources should not be processed the same way.
+
+Reason:
+
+- project folders need recall and technical synthesis
+- reference folders need conservative factual retrieval
+- memo folders need clustering, interpretation, and thought extension
+
+### Recall, Reference, and Synthesis are separate modes
+
+The product should expose three main modes:
+
+- Recall Mode: recover what the user touched before
+- Reference Mode: retrieve and reuse factual information
+- Synthesis Mode: organize and extend project knowledge or memo ideas
+
+Reason:
+
+- the same search engine can support all three, but the expected answer style is different
+- Reference Mode should avoid unsupported interpretation
+- Synthesis Mode needs stronger AI reasoning and can be more exploratory
 
 ### Markdown is the durable output
 
@@ -35,9 +76,9 @@ Reason:
 - easy to version with Git
 - useful even without the Web UI
 
-### AI is optional
+### AI is optional for indexing and retrieval
 
-Basic scanning, metadata, extraction, and full-text search should work without AI.
+Basic scanning, metadata, extraction, trace indexing, and full-text search should work without AI.
 
 Reason:
 
@@ -59,6 +100,42 @@ Reason:
 
 ## Pending Decisions
 
+### Source category configuration format
+
+Possible options:
+
+- a `thoughtvault.yaml` config file
+- CLI commands that write to SQLite
+- both
+
+Decision timing:
+
+- Phase 1
+
+### Export conflict behavior
+
+Possible rule:
+
+- generated files can be regenerated
+- user-edited files should not be overwritten without explicit confirmation
+- source hashes should be stored in frontmatter
+
+Decision timing:
+
+- before Markdown export
+
+### Sensitive information handling
+
+Questions:
+
+- should personal and company reference cards be excluded from some exports?
+- should sensitive fields be masked by default?
+- should absolute source paths be hidden in shareable Markdown?
+
+Decision timing:
+
+- before Reference Mode MVP
+
 ### Vector index choice
 
 Candidates:
@@ -73,7 +150,7 @@ Current preference:
 
 Decision timing:
 
-- Phase 5
+- semantic search phase
 
 ### Frontend framework
 
@@ -89,7 +166,7 @@ Current preference:
 
 Decision timing:
 
-- Phase 6
+- Web UI phase
 
 ### Local model baseline
 
@@ -106,76 +183,52 @@ Current preference:
 
 Decision timing:
 
-- Phase 4
-
-### Desktop app or local web app
-
-Candidates:
-
-- local Web app
-- Electron desktop app
-- Tauri desktop app
-
-Current preference:
-
-- local Web app first
-
-Reason:
-
-- easier to build
-- easier to debug
-- can become desktop later
-
-Decision timing:
-
-- after MVP proves useful
+- Synthesis Mode phase
 
 ## Open Product Questions
 
-### How much should the system auto-organize?
+### How should project recall be structured?
+
+Possible sections:
+
+- what this project was
+- my role or exposure
+- timeline
+- technologies
+- documents
+- decisions
+- problems and solutions
+- lessons learned
+- reusable knowledge notes
+
+### How should reference facts be reviewed?
 
 Possible rule:
 
-- AI can suggest
-- user confirms
-- confirmed knowledge becomes durable
+- low-risk facts can be generated as suggested cards
+- sensitive facts require explicit review before export
+- uncertain fields must be labeled uncertain
 
-### Should generated Markdown be overwritten?
+### How should memo synthesis avoid over-interpreting?
+
+Possible rule:
+
+- separate direct memo summary from AI thought extension
+- preserve original note links
+- mark extension as generated interpretation
+
+### How should generated Markdown be overwritten?
 
 Possible rule:
 
 - generated files can be regenerated
 - user-edited files should not be overwritten without explicit confirmation
-
-### How should company documents be handled?
-
-Possible rule:
-
-- company-related files should be indexed locally
-- sensitive folders can be excluded
-- generated summaries should not expose raw salary or personal identifiers in shareable views
-
-### How should memo files be formatted?
-
-Possible rule:
-
-- support loose formats first
-- optionally support structured markers later
-
-Examples:
-
-- `User:`
-- `Assistant:`
-- `我:`
-- `ChatGPT:`
-- `[User]`
-- `[Assistant]`
+- stale generated files should be marked rather than silently replaced
 
 ## Next Documentation Tasks
 
 - define CLI command examples
-- define prompt templates for local AI tasks
-- define folder configuration file format
+- define source configuration file format
 - define export conflict handling
 - define privacy and sensitive data policy
-
+- define prompt templates for Recall Mode, Reference Mode, and Synthesis Mode
