@@ -127,11 +127,33 @@ Phase 2 has started. The repository now contains the product direction, architec
 
 The next implementation milestone is expanding Phase 2 beyond Markdown and text files, then improving trace extraction quality.
 
-## Phase 1 CLI
+## Usage
 
-Run from the repository root.
+Run commands from the repository root.
 
-Without installing the package:
+### Option A: Run Without Installing
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m thoughtvault init
+```
+
+When using this mode, keep `$env:PYTHONPATH = "src"` in the current PowerShell session before running ThoughtVault commands.
+
+### Option B: Install Locally
+
+```powershell
+python -m pip install -e .
+thoughtvault init
+```
+
+After editable install, use `thoughtvault` directly instead of `python -m thoughtvault`.
+
+## Quickstart
+
+This example indexes the repository's own documentation folder.
+
+Using `python -m`:
 
 ```powershell
 $env:PYTHONPATH = "src"
@@ -143,22 +165,138 @@ python -m thoughtvault documents
 python -m thoughtvault search "SQLite FTS5"
 ```
 
-Or install the local package in editable mode:
+Using the installed command:
 
 ```powershell
-python -m pip install -e .
 thoughtvault init
 thoughtvault source add .\docs --category project --name docs
+thoughtvault source list
 thoughtvault scan
 thoughtvault documents
 thoughtvault search "SQLite FTS5"
 ```
+
+## Command Reference
+
+### Initialize Database
+
+```powershell
+python -m thoughtvault init
+```
+
+Creates the local SQLite database if it does not already exist.
 
 The default database path is:
 
 ```text
 .thoughtvault/thoughtvault.sqlite
 ```
+
+Use a custom database path with `--db`:
+
+```powershell
+python -m thoughtvault --db .thoughtvault\dev.sqlite init
+```
+
+### Add A Source Folder
+
+```powershell
+python -m thoughtvault source add <folder> --category <category> --name <display-name>
+```
+
+Example:
+
+```powershell
+python -m thoughtvault source add .\docs --category project --name docs
+```
+
+This registers a local folder as a source root. It does not scan files immediately. Run `scan` after adding sources.
+
+Supported categories:
+
+```text
+project
+reference
+memo
+conversation
+personal
+company
+unknown
+```
+
+You can pass multiple categories:
+
+```powershell
+python -m thoughtvault source add "D:\Notes" --category memo --category personal --name personal-notes
+```
+
+### List Source Folders
+
+```powershell
+python -m thoughtvault source list
+```
+
+Shows registered source ids, names, paths, categories, enabled state, and last scan time.
+
+### Scan Sources
+
+```powershell
+python -m thoughtvault scan
+```
+
+Scans all enabled source folders.
+
+Scan only one source:
+
+```powershell
+python -m thoughtvault scan --source-id 1
+```
+
+Scan records file status:
+
+```text
+new
+changed
+unchanged
+deleted
+error
+missing_source
+```
+
+### List Indexed Documents
+
+```powershell
+python -m thoughtvault documents
+```
+
+Shows indexed documents with source name, path, file type, size, status, chunk count, trace count, and modified time.
+
+### Search
+
+```powershell
+python -m thoughtvault search "<query>"
+```
+
+Examples:
+
+```powershell
+python -m thoughtvault search "FastAPI"
+python -m thoughtvault search "SQLite FTS5"
+python -m thoughtvault search "personal memory"
+```
+
+Search currently checks both:
+
+- extracted text chunks
+- extracted traces such as titles, paths, headings, dates, URLs, fields, and common technology names
+
+Limit result count:
+
+```powershell
+python -m thoughtvault search "SQLite" --limit 5
+```
+
+## Current Capabilities
 
 Phase 1 supports `.md` and `.txt` files. It records source roots, categories, root-relative file paths, file type, size, content hash, modified time, and document status (`new`, `changed`, `unchanged`, `deleted`, or error states).
 
@@ -169,3 +307,16 @@ Phase 2 adds:
 - basic trace extraction for titles, paths, headings, dates, URLs, form-like fields, and common technology names
 - SQLite FTS5 indexes for chunks and traces
 - `thoughtvault search <query>`
+
+## Current Limits
+
+Not implemented yet:
+
+- PDF, Word, Excel, and image/OCR extraction
+- AI summarization
+- natural-language Recall Mode answers
+- Reference Cards
+- Memo clustering and thought extension
+- Markdown export
+- Web UI
+- semantic search or vector database
