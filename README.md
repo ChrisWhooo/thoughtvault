@@ -121,8 +121,51 @@ thoughtvault/
 
 ## Current Status
 
-Planning stage. The current repository contains the product direction, architecture notes, data model draft, processing pipeline, and phased roadmap.
+Phase 2 has started. The repository now contains the product direction, architecture notes, data model draft, processing pipeline, phased roadmap, a minimal local scanner CLI, text chunking, trace extraction, and SQLite FTS search.
 
 ## Next Step
 
-The next implementation milestone is Phase 1: local scanner and basic SQLite metadata index, with the product framed around Recall Mode, Reference Mode, and Synthesis Mode.
+The next implementation milestone is expanding Phase 2 beyond Markdown and text files, then improving trace extraction quality.
+
+## Phase 1 CLI
+
+Run from the repository root.
+
+Without installing the package:
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m thoughtvault init
+python -m thoughtvault source add .\docs --category project --name docs
+python -m thoughtvault source list
+python -m thoughtvault scan
+python -m thoughtvault documents
+python -m thoughtvault search "SQLite FTS5"
+```
+
+Or install the local package in editable mode:
+
+```powershell
+python -m pip install -e .
+thoughtvault init
+thoughtvault source add .\docs --category project --name docs
+thoughtvault scan
+thoughtvault documents
+thoughtvault search "SQLite FTS5"
+```
+
+The default database path is:
+
+```text
+.thoughtvault/thoughtvault.sqlite
+```
+
+Phase 1 supports `.md` and `.txt` files. It records source roots, categories, root-relative file paths, file type, size, content hash, modified time, and document status (`new`, `changed`, `unchanged`, `deleted`, or error states).
+
+Phase 2 adds:
+
+- text extraction for `.md` and `.txt`
+- chunk creation
+- basic trace extraction for titles, paths, headings, dates, URLs, form-like fields, and common technology names
+- SQLite FTS5 indexes for chunks and traces
+- `thoughtvault search <query>`
