@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from .db import init_db
+from .recall import recall
 from .scanner import list_documents, scan
 from .search import search
 from .sources import add_source, list_sources
@@ -53,6 +54,16 @@ def build_parser() -> argparse.ArgumentParser:
     search_parser = subparsers.add_parser("search", help="Search indexed chunks and traces.")
     search_parser.add_argument("query", help="Search query.")
     search_parser.add_argument("--limit", type=int, default=10, help="Maximum results to show.")
+
+    recall_parser = subparsers.add_parser("recall", help="Recall past exposure with source-backed evidence.")
+    recall_parser.add_argument("query", help="Recall query.")
+    recall_parser.add_argument("--limit", type=int, default=5, help="Maximum documents to show.")
+    recall_parser.add_argument(
+        "--evidence-limit",
+        type=int,
+        default=3,
+        help="Maximum evidence snippets per document.",
+    )
     return parser
 
 
@@ -69,6 +80,33 @@ def print_rows(rows: list[dict[str, object]], columns: list[str]) -> None:
     print("  ".join("-" * widths[column] for column in columns))
     for row in rows:
         print("  ".join(str(row.get(column, "")).ljust(widths[column]) for column in columns))
+
+
+def print_recall_results(rows: list[dict[str, object]]) -> None:
+    if not rows:
+        print("No recall results found.")
+        return
+    for index, row in enumerate(rows, start=1):
+        print(f"{index}. {row['title']} ({row['path']})")
+        print(f"   source={row['source']} categories={row['categories']}")
+        print(
+            "   hits="
+            f"chunks:{row['chunk_hits']} traces:{row['trace_hits']} "
+            f"score:{row['score']}"
+        )
+        if row.get("technologies"):
+            print(f"   technologies: {', '.join(row['technologies'])}")
+        if row.get("dates"):
+            print(f"   dates: {', '.join(row['dates'])}")
+        if row.get("headings"):
+            print(f"   headings: {', '.join(row['headings'])}")
+        evidence = row.get("evidence", [])
+        if evidence:
+            print("   evidence:")
+            for item in evidence:
+                snippet = " ".join(str(item["snippet"]).split())
+                print(f"   - {item['type']}: {snippet}")
+        print()
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -127,6 +165,11 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "search":
         rows = search(args.query, args.db, args.limit)
         print_rows(rows, ["result_type", "path", "title", "snippet"])
+        return
+
+    if args.command == "recall":
+        rows = recall(args.query, args.db, args.limit, args.evidence_limit)
+        print_recall_results(rows)
         return
 
     parser.error("Unknown command")

@@ -5,7 +5,7 @@ import re
 from .db import connect, init_db
 
 
-TOKEN_RE = re.compile(r"[\w一-龥ぁ-んァ-ンー]+", re.UNICODE)
+TOKEN_RE = re.compile(r"\w+", re.UNICODE)
 
 
 def normalize_query(query: str) -> str:

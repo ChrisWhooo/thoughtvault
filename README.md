@@ -121,11 +121,11 @@ thoughtvault/
 
 ## Current Status
 
-Phase 2 has started. The repository now contains the product direction, architecture notes, data model draft, processing pipeline, phased roadmap, a minimal local scanner CLI, text chunking, trace extraction, and SQLite FTS search.
+Phase 3 has started. The repository now contains the product direction, architecture notes, data model draft, processing pipeline, phased roadmap, a minimal local scanner CLI, text chunking, trace extraction, SQLite FTS search, and a first source-backed Recall Mode command.
 
 ## Next Step
 
-The next implementation milestone is expanding Phase 2 beyond Markdown and text files, then improving trace extraction quality.
+The next implementation milestone is improving Recall Mode quality, then expanding beyond Markdown and text files.
 
 ## Usage
 
@@ -163,6 +163,7 @@ python -m thoughtvault source list
 python -m thoughtvault scan
 python -m thoughtvault documents
 python -m thoughtvault search "SQLite FTS5"
+python -m thoughtvault recall "FastAPI"
 ```
 
 Using the installed command:
@@ -174,6 +175,7 @@ thoughtvault source list
 thoughtvault scan
 thoughtvault documents
 thoughtvault search "SQLite FTS5"
+thoughtvault recall "FastAPI"
 ```
 
 ## Command Reference
@@ -296,6 +298,45 @@ Limit result count:
 python -m thoughtvault search "SQLite" --limit 5
 ```
 
+### Recall
+
+```powershell
+python -m thoughtvault recall "<query>"
+```
+
+Examples:
+
+```powershell
+python -m thoughtvault recall "FastAPI"
+python -m thoughtvault recall "SQLite FTS5"
+python -m thoughtvault recall "personal memory"
+```
+
+Recall Mode groups matching chunks and traces by source document. It shows:
+
+- source path
+- source category
+- chunk hit count
+- trace hit count
+- technologies detected from matching traces
+- dates detected from matching traces
+- relevant headings
+- evidence snippets
+
+Limit document count:
+
+```powershell
+python -m thoughtvault recall "SQLite" --limit 3
+```
+
+Limit evidence snippets per document:
+
+```powershell
+python -m thoughtvault recall "SQLite" --evidence-limit 2
+```
+
+Current Recall Mode is source-backed retrieval and aggregation. It does not use AI yet.
+
 ## Current Capabilities
 
 Phase 1 supports `.md` and `.txt` files. It records source roots, categories, root-relative file paths, file type, size, content hash, modified time, and document status (`new`, `changed`, `unchanged`, `deleted`, or error states).
@@ -308,13 +349,20 @@ Phase 2 adds:
 - SQLite FTS5 indexes for chunks and traces
 - `thoughtvault search <query>`
 
+Phase 3 adds:
+
+- `thoughtvault recall <query>`
+- document-level grouping of matching chunks and traces
+- source-backed evidence snippets for recall
+- extracted technologies, dates, and headings in recall output
+
 ## Current Limits
 
 Not implemented yet:
 
 - PDF, Word, Excel, and image/OCR extraction
 - AI summarization
-- natural-language Recall Mode answers
+- AI-generated natural-language Recall Mode answers
 - Reference Cards
 - Memo clustering and thought extension
 - Markdown export

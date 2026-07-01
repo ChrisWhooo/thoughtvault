@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from thoughtvault.scanner import scan
+from thoughtvault.recall import recall
 from thoughtvault.search import search
 from thoughtvault.sources import add_source
 
@@ -88,6 +89,11 @@ class Phase1ScanTests(unittest.TestCase):
 
             mixed_query_results = search("SQLite FTS5?", str(db_path))
             self.assertTrue(mixed_query_results)
+
+            recall_results = recall("FastAPI", str(db_path))
+            self.assertEqual(recall_results[0]["path"], "architecture.md")
+            self.assertTrue(recall_results[0]["evidence"])
+            self.assertIn("fastapi", recall_results[0]["technologies"])
 
 
 if __name__ == "__main__":
