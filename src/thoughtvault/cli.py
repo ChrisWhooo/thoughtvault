@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from .db import init_db
+from .exporter import export_markdown
 from .recall import recall
 from .reference import build_reference_cards, list_reference_cards, search_reference_cards
 from .scanner import list_documents, scan
@@ -77,6 +78,10 @@ def build_parser() -> argparse.ArgumentParser:
     reference_search = reference_subparsers.add_parser("search", help="Search generated reference cards.")
     reference_search.add_argument("query", help="Reference search query.")
     reference_search.add_argument("--limit", type=int, default=10, help="Maximum results to show.")
+
+    export_parser = subparsers.add_parser("export", help="Export indexed data to Markdown.")
+    export_parser.add_argument("output_dir", help="Output folder for exported Markdown files.")
+    export_parser.add_argument("--overwrite", action="store_true", help="Overwrite existing export files.")
     return parser
 
 
@@ -200,5 +205,15 @@ def main(argv: list[str] | None = None) -> None:
             rows = search_reference_cards(args.query, args.db, args.limit)
             print_rows(rows, ["id", "title", "category", "sensitivity", "source_path", "trace_type", "value", "snippet"])
             return
+
+    if args.command == "export":
+        summary = export_markdown(args.output_dir, args.db, args.overwrite)
+        print(
+            "Export complete: "
+            f"output={summary.output_dir} "
+            f"written={summary.written} "
+            f"skipped={summary.skipped}"
+        )
+        return
 
     parser.error("Unknown command")

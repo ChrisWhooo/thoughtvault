@@ -121,11 +121,11 @@ thoughtvault/
 
 ## Current Status
 
-Phase 4 has started. The repository now contains the product direction, architecture notes, data model draft, processing pipeline, phased roadmap, a minimal local scanner CLI, text chunking, trace extraction, SQLite FTS search, a first source-backed Recall Mode command, and generated Reference Cards.
+Phase 5 has started. The repository now contains the product direction, architecture notes, data model draft, processing pipeline, phased roadmap, a minimal local scanner CLI, text chunking, trace extraction, SQLite FTS search, a first source-backed Recall Mode command, generated Reference Cards, and Markdown export.
 
 ## Next Step
 
-The next implementation milestone is improving Reference Mode and Recall Mode quality, then expanding beyond Markdown and text files.
+The next implementation milestone is improving export conflict handling and generated note quality, then expanding beyond Markdown and text files.
 
 ## Usage
 
@@ -166,6 +166,7 @@ python -m thoughtvault search "SQLite FTS5"
 python -m thoughtvault recall "FastAPI"
 python -m thoughtvault reference build
 python -m thoughtvault reference list
+python -m thoughtvault export .\Vault
 ```
 
 Using the installed command:
@@ -180,6 +181,7 @@ thoughtvault search "SQLite FTS5"
 thoughtvault recall "FastAPI"
 thoughtvault reference build
 thoughtvault reference list
+thoughtvault export .\Vault
 ```
 
 ## Command Reference
@@ -376,6 +378,43 @@ Reference Cards currently include:
 
 Reference Mode is intentionally conservative. It does not infer facts beyond extracted traces.
 
+### Markdown Export
+
+```powershell
+python -m thoughtvault export <output-folder>
+```
+
+Example:
+
+```powershell
+python -m thoughtvault export .\Vault
+```
+
+Exports indexed data to portable Markdown:
+
+```text
+Vault/
+|-- _Index.md
+|-- Sources/
+`-- References/
+```
+
+The export includes:
+
+- `_Index.md`
+- source notes for indexed documents
+- reference card notes for generated Reference Cards
+- source paths
+- source hashes
+- trace lists
+- chunk previews
+
+By default, export does not overwrite existing files. Use `--overwrite` to regenerate files:
+
+```powershell
+python -m thoughtvault export .\Vault --overwrite
+```
+
 ## Current Capabilities
 
 Phase 1 supports `.md` and `.txt` files. It records source roots, categories, root-relative file paths, file type, size, content hash, modified time, and document status (`new`, `changed`, `unchanged`, `deleted`, or error states).
@@ -403,6 +442,14 @@ Phase 4 adds:
 - generated reference cards for `reference`, `personal`, and `company` sources
 - sensitivity labels for personal/company reference cards
 
+Phase 5 adds:
+
+- `thoughtvault export <output-folder>`
+- `_Index.md`
+- Markdown source notes
+- Markdown reference card notes
+- default no-overwrite behavior with optional `--overwrite`
+
 ## Current Limits
 
 Not implemented yet:
@@ -412,6 +459,6 @@ Not implemented yet:
 - AI-generated natural-language Recall Mode answers
 - advanced Reference Cards with user review and masking
 - Memo clustering and thought extension
-- Markdown export
+- advanced Markdown export conflict review
 - Web UI
 - semantic search or vector database

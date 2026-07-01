@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from thoughtvault.scanner import scan
+from thoughtvault.exporter import export_markdown
 from thoughtvault.recall import recall
 from thoughtvault.reference import build_reference_cards, search_reference_cards
 from thoughtvault.search import search
@@ -122,6 +123,41 @@ class Phase1ScanTests(unittest.TestCase):
             results = search_reference_cards("Example", str(db_path))
             self.assertTrue(results)
             self.assertEqual(results[0]["source_path"], "application.md")
+
+    def test_markdown_export_writes_index_sources_and_reference_cards(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "reference"
+            source.mkdir()
+            note = source / "application.md"
+            note.write_text(
+                "# Application Record\n\n"
+                "Company: Example Corp\n"
+                "Submitted Date: 2026-07-01\n",
+                encoding="utf-8",
+            )
+            db_path = root / "thoughtvault.sqlite"
+            output = root / "Vault"
+
+            add_source(str(source), ["reference", "company"], db_path=str(db_path))
+            scan(str(db_path))
+            build_reference_cards(str(db_path))
+
+            first = export_markdown(output, str(db_path))
+            self.assertGreaterEqual(first.written, 3)
+            self.assertTrue((output / "_Index.md").exists())
+            self.assertTrue(any((output / "Sources").glob("*.md")))
+            self.assertTrue(any((output / "References").glob("*.md")))
+
+            index = (output / "_Index.md").read_text(encoding="utf-8")
+            self.assertIn("ThoughtVault Index", index)
+
+            second = export_markdown(output, str(db_path))
+            self.assertEqual(second.written, 0)
+            self.assertGreater(second.skipped, 0)
+
+            third = export_markdown(output, str(db_path), overwrite=True)
+            self.assertGreater(third.written, 0)
 
 
 if __name__ == "__main__":
