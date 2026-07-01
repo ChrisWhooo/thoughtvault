@@ -87,6 +87,24 @@ CREATE VIRTUAL TABLE IF NOT EXISTS traces_fts USING fts5(
     document_id UNINDEXED,
     trace_id UNINDEXED
 );
+
+CREATE TABLE IF NOT EXISTS reference_cards (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    category TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    fields_json TEXT NOT NULL,
+    sensitivity TEXT NOT NULL DEFAULT 'medium',
+    status TEXT NOT NULL DEFAULT 'generated',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(document_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_reference_cards_document_id ON reference_cards(document_id);
+CREATE INDEX IF NOT EXISTS idx_reference_cards_category ON reference_cards(category);
+CREATE INDEX IF NOT EXISTS idx_reference_cards_status ON reference_cards(status);
 """
 
 

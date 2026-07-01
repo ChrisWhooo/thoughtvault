@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .db import init_db
 from .recall import recall
+from .reference import build_reference_cards, list_reference_cards, search_reference_cards
 from .scanner import list_documents, scan
 from .search import search
 from .sources import add_source, list_sources
@@ -64,6 +65,18 @@ def build_parser() -> argparse.ArgumentParser:
         default=3,
         help="Maximum evidence snippets per document.",
     )
+
+    reference_parser = subparsers.add_parser("reference", help="Build and inspect reference cards.")
+    reference_subparsers = reference_parser.add_subparsers(dest="reference_command", required=True)
+
+    reference_build = reference_subparsers.add_parser("build", help="Generate reference cards from indexed sources.")
+    reference_build.add_argument("--source-id", type=int, default=None, help="Build cards for one source id.")
+
+    reference_subparsers.add_parser("list", help="List generated reference cards.")
+
+    reference_search = reference_subparsers.add_parser("search", help="Search generated reference cards.")
+    reference_search.add_argument("query", help="Reference search query.")
+    reference_search.add_argument("--limit", type=int, default=10, help="Maximum results to show.")
     return parser
 
 
@@ -171,5 +184,21 @@ def main(argv: list[str] | None = None) -> None:
         rows = recall(args.query, args.db, args.limit, args.evidence_limit)
         print_recall_results(rows)
         return
+
+    if args.command == "reference":
+        if args.reference_command == "build":
+            rows = build_reference_cards(args.db, args.source_id)
+            print(f"Reference cards built: {len(rows)}")
+            if rows:
+                print_rows(rows, ["id", "title", "category", "sensitivity", "status"])
+            return
+        if args.reference_command == "list":
+            rows = list_reference_cards(args.db)
+            print_rows(rows, ["id", "title", "category", "sensitivity", "status", "source_path", "updated_at"])
+            return
+        if args.reference_command == "search":
+            rows = search_reference_cards(args.query, args.db, args.limit)
+            print_rows(rows, ["id", "title", "category", "sensitivity", "source_path", "trace_type", "value", "snippet"])
+            return
 
     parser.error("Unknown command")

@@ -121,11 +121,11 @@ thoughtvault/
 
 ## Current Status
 
-Phase 3 has started. The repository now contains the product direction, architecture notes, data model draft, processing pipeline, phased roadmap, a minimal local scanner CLI, text chunking, trace extraction, SQLite FTS search, and a first source-backed Recall Mode command.
+Phase 4 has started. The repository now contains the product direction, architecture notes, data model draft, processing pipeline, phased roadmap, a minimal local scanner CLI, text chunking, trace extraction, SQLite FTS search, a first source-backed Recall Mode command, and generated Reference Cards.
 
 ## Next Step
 
-The next implementation milestone is improving Recall Mode quality, then expanding beyond Markdown and text files.
+The next implementation milestone is improving Reference Mode and Recall Mode quality, then expanding beyond Markdown and text files.
 
 ## Usage
 
@@ -164,6 +164,8 @@ python -m thoughtvault scan
 python -m thoughtvault documents
 python -m thoughtvault search "SQLite FTS5"
 python -m thoughtvault recall "FastAPI"
+python -m thoughtvault reference build
+python -m thoughtvault reference list
 ```
 
 Using the installed command:
@@ -176,6 +178,8 @@ thoughtvault scan
 thoughtvault documents
 thoughtvault search "SQLite FTS5"
 thoughtvault recall "FastAPI"
+thoughtvault reference build
+thoughtvault reference list
 ```
 
 ## Command Reference
@@ -337,6 +341,41 @@ python -m thoughtvault recall "SQLite" --evidence-limit 2
 
 Current Recall Mode is source-backed retrieval and aggregation. It does not use AI yet.
 
+### Reference Cards
+
+```powershell
+python -m thoughtvault reference build
+```
+
+Builds conservative reference cards from indexed sources categorized as `reference`, `personal`, or `company`.
+
+List generated cards:
+
+```powershell
+python -m thoughtvault reference list
+```
+
+Search generated cards through their source-backed traces:
+
+```powershell
+python -m thoughtvault reference search "Example"
+```
+
+Build cards for one source:
+
+```powershell
+python -m thoughtvault reference build --source-id 1
+```
+
+Reference Cards currently include:
+
+- source document path
+- inferred card category
+- sensitivity label
+- source-backed traces such as fields, dates, URLs, title, and path
+
+Reference Mode is intentionally conservative. It does not infer facts beyond extracted traces.
+
 ## Current Capabilities
 
 Phase 1 supports `.md` and `.txt` files. It records source roots, categories, root-relative file paths, file type, size, content hash, modified time, and document status (`new`, `changed`, `unchanged`, `deleted`, or error states).
@@ -356,6 +395,14 @@ Phase 3 adds:
 - source-backed evidence snippets for recall
 - extracted technologies, dates, and headings in recall output
 
+Phase 4 adds:
+
+- `thoughtvault reference build`
+- `thoughtvault reference list`
+- `thoughtvault reference search <query>`
+- generated reference cards for `reference`, `personal`, and `company` sources
+- sensitivity labels for personal/company reference cards
+
 ## Current Limits
 
 Not implemented yet:
@@ -363,7 +410,7 @@ Not implemented yet:
 - PDF, Word, Excel, and image/OCR extraction
 - AI summarization
 - AI-generated natural-language Recall Mode answers
-- Reference Cards
+- advanced Reference Cards with user review and masking
 - Memo clustering and thought extension
 - Markdown export
 - Web UI

@@ -11,6 +11,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from thoughtvault.scanner import scan
 from thoughtvault.recall import recall
+from thoughtvault.reference import build_reference_cards, search_reference_cards
 from thoughtvault.search import search
 from thoughtvault.sources import add_source
 
@@ -94,6 +95,33 @@ class Phase1ScanTests(unittest.TestCase):
             self.assertEqual(recall_results[0]["path"], "architecture.md")
             self.assertTrue(recall_results[0]["evidence"])
             self.assertIn("fastapi", recall_results[0]["technologies"])
+
+    def test_reference_cards_are_built_from_reference_sources(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "reference"
+            source.mkdir()
+            note = source / "application.md"
+            note.write_text(
+                "# Application Record\n\n"
+                "Company: Example Corp\n"
+                "Submitted Date: 2026-07-01\n"
+                "Contact URL: https://example.com/application\n",
+                encoding="utf-8",
+            )
+            db_path = root / "thoughtvault.sqlite"
+
+            add_source(str(source), ["reference", "company"], db_path=str(db_path))
+            scan(str(db_path))
+
+            cards = build_reference_cards(str(db_path))
+            self.assertEqual(len(cards), 1)
+            self.assertEqual(cards[0]["category"], "company_info")
+            self.assertEqual(cards[0]["sensitivity"], "high")
+
+            results = search_reference_cards("Example", str(db_path))
+            self.assertTrue(results)
+            self.assertEqual(results[0]["source_path"], "application.md")
 
 
 if __name__ == "__main__":
