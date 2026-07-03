@@ -121,11 +121,11 @@ thoughtvault/
 
 ## Current Status
 
-Phase 5 has started. The repository now contains the product direction, architecture notes, data model draft, processing pipeline, phased roadmap, a minimal local scanner CLI, text chunking, trace extraction, SQLite FTS search, a first source-backed Recall Mode command, generated Reference Cards, and Markdown export.
+Phase 6 has started. The repository now contains the product direction, architecture notes, data model draft, processing pipeline, phased roadmap, a minimal local scanner CLI, text chunking, trace extraction, SQLite FTS search, a first source-backed Recall Mode command, generated Reference Cards, Markdown export, rule-based Synthesis Notes, and optional local Ollama synthesis.
 
 ## Next Step
 
-The next implementation milestone is improving export conflict handling and generated note quality, then expanding beyond Markdown and text files.
+The next implementation milestone is making AI synthesis easier to review and trace, then expanding beyond Markdown and text files.
 
 ## Usage
 
@@ -166,6 +166,9 @@ python -m thoughtvault search "SQLite FTS5"
 python -m thoughtvault recall "FastAPI"
 python -m thoughtvault reference build
 python -m thoughtvault reference list
+python -m thoughtvault synthesis build
+python -m thoughtvault synthesis build --ai --model qwen2.5:3b
+python -m thoughtvault synthesis list
 python -m thoughtvault export .\Vault
 ```
 
@@ -181,6 +184,9 @@ thoughtvault search "SQLite FTS5"
 thoughtvault recall "FastAPI"
 thoughtvault reference build
 thoughtvault reference list
+thoughtvault synthesis build
+thoughtvault synthesis build --ai --model qwen2.5:3b
+thoughtvault synthesis list
 thoughtvault export .\Vault
 ```
 
@@ -378,6 +384,69 @@ Reference Cards currently include:
 
 Reference Mode is intentionally conservative. It does not infer facts beyond extracted traces.
 
+### Synthesis Notes
+
+```powershell
+python -m thoughtvault synthesis build
+```
+
+Builds rule-based synthesis notes from indexed sources categorized as `project`, `memo`, or `conversation`.
+
+Use local Ollama for AI-assisted synthesis:
+
+```powershell
+python -m thoughtvault synthesis build --ai --model qwen2.5:3b
+```
+
+By default, AI synthesis calls:
+
+```text
+http://127.0.0.1:11434
+```
+
+Use a different Ollama host:
+
+```powershell
+python -m thoughtvault synthesis build --ai --ollama-host http://127.0.0.1:11434
+```
+
+If Ollama fails, ThoughtVault writes a rule-based fallback note and marks it as `ai_failed`. To fail the command instead:
+
+```powershell
+python -m thoughtvault synthesis build --ai --no-fallback
+```
+
+List generated synthesis notes:
+
+```powershell
+python -m thoughtvault synthesis list
+```
+
+Search generated synthesis notes:
+
+```powershell
+python -m thoughtvault synthesis search "FastAPI"
+```
+
+Build notes for one source:
+
+```powershell
+python -m thoughtvault synthesis build --source-id 1
+```
+
+Synthesis Mode can run in two modes:
+
+- rule-based mode, using source-backed traces and chunks
+- local AI mode, using Ollama to generate a structured Markdown note from source-backed evidence
+
+It creates draft notes such as:
+
+- project synthesis notes
+- memo synthesis notes
+- detected technologies
+- headings and themes
+- source document lists
+
 ### Markdown Export
 
 ```powershell
@@ -396,7 +465,8 @@ Exports indexed data to portable Markdown:
 Vault/
 |-- _Index.md
 |-- Sources/
-`-- References/
+|-- References/
+`-- Knowledge/
 ```
 
 The export includes:
@@ -404,6 +474,7 @@ The export includes:
 - `_Index.md`
 - source notes for indexed documents
 - reference card notes for generated Reference Cards
+- synthesis notes for generated Synthesis Notes
 - source paths
 - source hashes
 - trace lists
@@ -450,12 +521,24 @@ Phase 5 adds:
 - Markdown reference card notes
 - default no-overwrite behavior with optional `--overwrite`
 
+Phase 6 adds:
+
+- `thoughtvault synthesis build`
+- `thoughtvault synthesis build --ai --model qwen2.5:3b`
+- `thoughtvault synthesis list`
+- `thoughtvault synthesis search <query>`
+- rule-based project synthesis notes
+- rule-based memo synthesis notes
+- optional Ollama-powered project and memo synthesis notes
+- AI fallback status when local generation fails
+- Markdown synthesis note export under `Knowledge/`
+
 ## Current Limits
 
 Not implemented yet:
 
 - PDF, Word, Excel, and image/OCR extraction
-- AI summarization
+- broader AI summarization across more file types
 - AI-generated natural-language Recall Mode answers
 - advanced Reference Cards with user review and masking
 - Memo clustering and thought extension

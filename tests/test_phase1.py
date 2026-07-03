@@ -15,6 +15,7 @@ from thoughtvault.recall import recall
 from thoughtvault.reference import build_reference_cards, search_reference_cards
 from thoughtvault.search import search
 from thoughtvault.sources import add_source
+from thoughtvault.synthesis import build_synthesis_notes, search_synthesis_notes
 
 
 class Phase1ScanTests(unittest.TestCase):
@@ -158,6 +159,80 @@ class Phase1ScanTests(unittest.TestCase):
 
             third = export_markdown(output, str(db_path), overwrite=True)
             self.assertGreater(third.written, 0)
+
+    def test_synthesis_notes_are_built_and_exported(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "project"
+            source.mkdir()
+            note = source / "architecture.md"
+            note.write_text(
+                "# Architecture\n\n"
+                "The project uses Python, FastAPI, SQLite FTS5, and Markdown export.\n",
+                encoding="utf-8",
+            )
+            db_path = root / "thoughtvault.sqlite"
+            output = root / "Vault"
+
+            add_source(str(source), ["project"], db_path=str(db_path))
+            scan(str(db_path))
+
+            notes = build_synthesis_notes(str(db_path))
+            self.assertEqual(len(notes), 1)
+            self.assertEqual(notes[0]["note_type"], "project_synthesis")
+
+            results = search_synthesis_notes("FastAPI", str(db_path))
+            self.assertTrue(results)
+
+            export_markdown(output, str(db_path))
+            self.assertTrue(any((output / "Knowledge").glob("*.md")))
+
+    def test_ai_synthesis_notes_use_injected_generator(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "project"
+            source.mkdir()
+            note = source / "architecture.md"
+            note.write_text(
+                "# Architecture\n\n"
+                "The project uses Python, FastAPI, SQLite FTS5, and Markdown export.\n",
+                encoding="utf-8",
+            )
+            db_path = root / "thoughtvault.sqlite"
+
+            add_source(str(source), ["project"], db_path=str(db_path))
+            scan(str(db_path))
+
+            def fake_generator(prompt: str, model: str, host: str, timeout: float) -> str:
+                self.assertIn("FastAPI", prompt)
+                self.assertEqual(model, "test-model")
+                self.assertEqual(host, "http://test-host")
+                self.assertEqual(timeout, 3.0)
+                return "# AI Note\n\n## Key Details To Recall\n\n- FastAPI was used."
+
+            notes = build_synthesis_notes(
+                str(db_path),
+                use_ai=True,
+                model="test-model",
+                ollama_host="http://test-host",
+                timeout=3.0,
+                generator=fake_generator,
+            )
+            self.assertEqual(len(notes), 1)
+            self.assertEqual(notes[0]["status"], "ai_suggested")
+
+            conn = sqlite3.connect(db_path)
+            try:
+                row = conn.execute(
+                    "SELECT body, prompt_version, model, status FROM synthesis_notes"
+                ).fetchone()
+            finally:
+                conn.close()
+
+            self.assertIn("AI Note", row[0])
+            self.assertEqual(row[1], "ollama-v1")
+            self.assertEqual(row[2], "test-model")
+            self.assertEqual(row[3], "ai_suggested")
 
 
 if __name__ == "__main__":

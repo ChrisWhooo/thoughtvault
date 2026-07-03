@@ -105,6 +105,26 @@ CREATE TABLE IF NOT EXISTS reference_cards (
 CREATE INDEX IF NOT EXISTS idx_reference_cards_document_id ON reference_cards(document_id);
 CREATE INDEX IF NOT EXISTS idx_reference_cards_category ON reference_cards(category);
 CREATE INDEX IF NOT EXISTS idx_reference_cards_status ON reference_cards(status);
+
+CREATE TABLE IF NOT EXISTS synthesis_notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_id INTEGER NOT NULL REFERENCES source_roots(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    note_type TEXT NOT NULL,
+    body TEXT NOT NULL,
+    source_document_ids TEXT NOT NULL,
+    source_chunk_ids TEXT NOT NULL,
+    prompt_version TEXT NOT NULL DEFAULT 'rule-v1',
+    model TEXT NOT NULL DEFAULT 'none',
+    status TEXT NOT NULL DEFAULT 'suggested',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(source_id, note_type, title)
+);
+
+CREATE INDEX IF NOT EXISTS idx_synthesis_notes_source_id ON synthesis_notes(source_id);
+CREATE INDEX IF NOT EXISTS idx_synthesis_notes_type ON synthesis_notes(note_type);
+CREATE INDEX IF NOT EXISTS idx_synthesis_notes_status ON synthesis_notes(status);
 """
 
 

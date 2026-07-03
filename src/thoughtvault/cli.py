@@ -11,6 +11,13 @@ from .reference import build_reference_cards, list_reference_cards, search_refer
 from .scanner import list_documents, scan
 from .search import search
 from .sources import add_source, list_sources
+from .synthesis import (
+    DEFAULT_OLLAMA_HOST,
+    DEFAULT_OLLAMA_MODEL,
+    build_synthesis_notes,
+    list_synthesis_notes,
+    search_synthesis_notes,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -82,6 +89,40 @@ def build_parser() -> argparse.ArgumentParser:
     export_parser = subparsers.add_parser("export", help="Export indexed data to Markdown.")
     export_parser.add_argument("output_dir", help="Output folder for exported Markdown files.")
     export_parser.add_argument("--overwrite", action="store_true", help="Overwrite existing export files.")
+
+    synthesis_parser = subparsers.add_parser("synthesis", help="Build and inspect synthesis notes.")
+    synthesis_subparsers = synthesis_parser.add_subparsers(dest="synthesis_command", required=True)
+
+    synthesis_build = synthesis_subparsers.add_parser("build", help="Generate source-backed synthesis notes.")
+    synthesis_build.add_argument("--source-id", type=int, default=None, help="Build notes for one source id.")
+    synthesis_build.add_argument("--ai", action="store_true", help="Use local Ollama to generate synthesis notes.")
+    synthesis_build.add_argument(
+        "--model",
+        default=DEFAULT_OLLAMA_MODEL,
+        help=f"Ollama model to use with --ai. Defaults to {DEFAULT_OLLAMA_MODEL}.",
+    )
+    synthesis_build.add_argument(
+        "--ollama-host",
+        default=DEFAULT_OLLAMA_HOST,
+        help=f"Ollama host URL. Defaults to {DEFAULT_OLLAMA_HOST}.",
+    )
+    synthesis_build.add_argument(
+        "--timeout",
+        type=float,
+        default=120.0,
+        help="Ollama request timeout in seconds.",
+    )
+    synthesis_build.add_argument(
+        "--no-fallback",
+        action="store_true",
+        help="Fail instead of writing a rule-based fallback note if Ollama generation fails.",
+    )
+
+    synthesis_subparsers.add_parser("list", help="List generated synthesis notes.")
+
+    synthesis_search = synthesis_subparsers.add_parser("search", help="Search generated synthesis notes.")
+    synthesis_search.add_argument("query", help="Synthesis search query.")
+    synthesis_search.add_argument("--limit", type=int, default=10, help="Maximum results to show.")
     return parser
 
 
@@ -215,5 +256,29 @@ def main(argv: list[str] | None = None) -> None:
             f"skipped={summary.skipped}"
         )
         return
+
+    if args.command == "synthesis":
+        if args.synthesis_command == "build":
+            rows = build_synthesis_notes(
+                args.db,
+                args.source_id,
+                use_ai=args.ai,
+                model=args.model,
+                ollama_host=args.ollama_host,
+                timeout=args.timeout,
+                allow_fallback=not args.no_fallback,
+            )
+            print(f"Synthesis notes built: {len(rows)}")
+            if rows:
+                print_rows(rows, ["id", "title", "note_type", "status"])
+            return
+        if args.synthesis_command == "list":
+            rows = list_synthesis_notes(args.db)
+            print_rows(rows, ["id", "title", "note_type", "status", "source", "updated_at"])
+            return
+        if args.synthesis_command == "search":
+            rows = search_synthesis_notes(args.query, args.db, args.limit)
+            print_rows(rows, ["id", "title", "note_type", "status", "source", "snippet"])
+            return
 
     parser.error("Unknown command")

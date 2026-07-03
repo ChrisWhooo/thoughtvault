@@ -100,6 +100,24 @@ def export_markdown(
             ORDER BY reference_cards.category, reference_cards.title
             """
         ).fetchall()
+        synthesis_notes = conn.execute(
+            """
+            SELECT
+                synthesis_notes.id,
+                synthesis_notes.title,
+                synthesis_notes.note_type,
+                synthesis_notes.body,
+                synthesis_notes.source_document_ids,
+                synthesis_notes.source_chunk_ids,
+                synthesis_notes.status,
+                synthesis_notes.model,
+                synthesis_notes.prompt_version,
+                source_roots.name AS source
+            FROM synthesis_notes
+            JOIN source_roots ON source_roots.id = synthesis_notes.source_id
+            ORDER BY synthesis_notes.note_type, synthesis_notes.title
+            """
+        ).fetchall()
 
         index_lines = [
             frontmatter({"type": "index", "generated_by": "thoughtvault"}),
@@ -121,6 +139,10 @@ def export_markdown(
         for card in reference_cards:
             note_name = f"{card['id']}-{slugify(card['title'])}.md"
             index_lines.append(f"- [[References/{note_name[:-3]}|{card['title']}]]")
+        index_lines.extend(["", "## Synthesis Notes", ""])
+        for note in synthesis_notes:
+            note_name = f"{note['id']}-{slugify(note['title'])}.md"
+            index_lines.append(f"- [[Knowledge/{note_name[:-3]}|{note['title']}]]")
 
         if write_text(output / "_Index.md", "\n".join(index_lines) + "\n", overwrite):
             written += 1
@@ -228,6 +250,33 @@ def export_markdown(
             for trace in fields.get("traces", []):
                 lines.append(f"- **{trace['trace_type']}**: {trace['value']}")
             path = output / "References" / f"{card['id']}-{slugify(card['title'])}.md"
+            if write_text(path, "\n".join(lines).rstrip() + "\n", overwrite):
+                written += 1
+            else:
+                skipped += 1
+
+        for note in synthesis_notes:
+            lines = [
+                frontmatter(
+                    {
+                        "type": "synthesis_note",
+                        "generated_by": "thoughtvault",
+                        "note_type": note["note_type"],
+                        "source": note["source"],
+                        "status": note["status"],
+                        "model": note["model"],
+                        "prompt_version": note["prompt_version"],
+                    }
+                ),
+                "",
+                note["body"],
+                "",
+                "## Provenance",
+                "",
+                f"- Source document ids: `{note['source_document_ids']}`",
+                f"- Source chunk ids: `{note['source_chunk_ids']}`",
+            ]
+            path = output / "Knowledge" / f"{note['id']}-{slugify(note['title'])}.md"
             if write_text(path, "\n".join(lines).rstrip() + "\n", overwrite):
                 written += 1
             else:
