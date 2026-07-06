@@ -8,6 +8,11 @@ version = "0.1.0"
 description = "Local-first personal memory and knowledge system"
 requires-python = ">=3.11"
 readme = "README.md"
+dependencies = [
+    "openpyxl>=3.1",
+    "pypdf>=5.0",
+    "xlrd>=2.0",
+]
 
 [project.scripts]
 thoughtvault = "thoughtvault.cli:main"

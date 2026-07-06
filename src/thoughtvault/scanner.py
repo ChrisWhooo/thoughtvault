@@ -8,7 +8,7 @@ from pathlib import Path
 from .db import connect, init_db
 from .indexer import clear_document_index, reindex_document
 
-SUPPORTED_EXTENSIONS = {".md", ".txt"}
+SUPPORTED_EXTENSIONS = {".md", ".txt", ".pdf", ".xls", ".xlsx", ".xlsm"}
 IGNORED_DIRS = {
     ".git",
     ".hg",

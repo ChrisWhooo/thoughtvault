@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .db import init_db
 from .exporter import export_markdown
+from .ask import answer_question
 from .recall import recall
 from .reference import build_reference_cards, list_reference_cards, search_reference_cards
 from .scanner import list_documents, scan
@@ -63,6 +64,22 @@ def build_parser() -> argparse.ArgumentParser:
     search_parser = subparsers.add_parser("search", help="Search indexed chunks and traces.")
     search_parser.add_argument("query", help="Search query.")
     search_parser.add_argument("--limit", type=int, default=10, help="Maximum results to show.")
+
+    ask_parser = subparsers.add_parser("ask", help="Ask a source-backed local AI question.")
+    ask_parser.add_argument("query", help="Question to answer from indexed local knowledge.")
+    ask_parser.add_argument(
+        "--model",
+        default=DEFAULT_OLLAMA_MODEL,
+        help=f"Ollama model to use. Defaults to {DEFAULT_OLLAMA_MODEL}.",
+    )
+    ask_parser.add_argument(
+        "--ollama-host",
+        default=DEFAULT_OLLAMA_HOST,
+        help=f"Ollama host URL. Defaults to {DEFAULT_OLLAMA_HOST}.",
+    )
+    ask_parser.add_argument("--timeout", type=float, default=120.0, help="Ollama request timeout in seconds.")
+    ask_parser.add_argument("--limit", type=int, default=8, help="Maximum evidence items to retrieve.")
+    ask_parser.add_argument("--no-ai", action="store_true", help="Show retrieved evidence without AI generation.")
 
     recall_parser = subparsers.add_parser("recall", help="Recall past exposure with source-backed evidence.")
     recall_parser.add_argument("query", help="Recall query.")
@@ -170,7 +187,7 @@ def print_recall_results(rows: list[dict[str, object]]) -> None:
 
 def main(argv: list[str] | None = None) -> None:
     if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(errors="replace")
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     parser = build_parser()
     args = parser.parse_args(argv)
 
@@ -224,6 +241,19 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "search":
         rows = search(args.query, args.db, args.limit)
         print_rows(rows, ["result_type", "path", "title", "snippet"])
+        return
+
+    if args.command == "ask":
+        result = answer_question(
+            args.query,
+            args.db,
+            model=args.model,
+            ollama_host=args.ollama_host,
+            timeout=args.timeout,
+            limit=args.limit,
+            use_ai=not args.no_ai,
+        )
+        print(result["answer"])
         return
 
     if args.command == "recall":

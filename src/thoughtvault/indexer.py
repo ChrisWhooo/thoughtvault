@@ -54,6 +54,13 @@ class ExtractedTrace:
 
 
 def read_text(path: Path) -> str:
+    suffix = path.suffix.lower()
+    if suffix in {".xlsx", ".xlsm"}:
+        return read_openpyxl_text(path)
+    if suffix == ".xls":
+        return read_xls_text(path)
+    if suffix == ".pdf":
+        return read_pdf_text(path)
     data = path.read_bytes()
     for encoding in ("utf-8-sig", "utf-8", "cp932", "shift_jis"):
         try:
@@ -61,6 +68,74 @@ def read_text(path: Path) -> str:
         except UnicodeDecodeError:
             continue
     return data.decode("utf-8", errors="replace")
+
+
+def read_openpyxl_text(path: Path) -> str:
+    try:
+        from openpyxl import load_workbook
+    except ImportError as exc:
+        raise RuntimeError("Excel extraction requires openpyxl. Install project dependencies.") from exc
+
+    workbook = load_workbook(path, read_only=True, data_only=True)
+    try:
+        sections: list[str] = []
+        for sheet in workbook.worksheets:
+            lines = [f"# Sheet: {sheet.title}"]
+            for row in sheet.iter_rows(values_only=True):
+                values = [format_cell(value) for value in row]
+                values = [value for value in values if value]
+                if values:
+                    lines.append("\t".join(values))
+            if len(lines) > 1:
+                sections.append("\n".join(lines))
+        return "\n\n".join(sections)
+    finally:
+        workbook.close()
+
+
+def read_xls_text(path: Path) -> str:
+    try:
+        import xlrd
+    except ImportError as exc:
+        raise RuntimeError("XLS extraction requires xlrd. Install project dependencies.") from exc
+
+    workbook = xlrd.open_workbook(str(path), on_demand=True)
+    try:
+        sections: list[str] = []
+        for sheet in workbook.sheets():
+            lines = [f"# Sheet: {sheet.name}"]
+            for row_index in range(sheet.nrows):
+                values = [format_cell(sheet.cell_value(row_index, col_index)) for col_index in range(sheet.ncols)]
+                values = [value for value in values if value]
+                if values:
+                    lines.append("\t".join(values))
+            if len(lines) > 1:
+                sections.append("\n".join(lines))
+        return "\n\n".join(sections)
+    finally:
+        workbook.release_resources()
+
+
+def format_cell(value: object) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def read_pdf_text(path: Path) -> str:
+    try:
+        from pypdf import PdfReader
+    except ImportError as exc:
+        raise RuntimeError("PDF extraction requires pypdf. Install project dependencies.") from exc
+
+    reader = PdfReader(str(path))
+    pages: list[str] = []
+    for index, page in enumerate(reader.pages, start=1):
+        text = page.extract_text() or ""
+        text = text.strip()
+        if text:
+            pages.append(f"# Page {index}\n{text}")
+    return "\n\n".join(pages)
 
 
 def hash_text(text: str) -> str:

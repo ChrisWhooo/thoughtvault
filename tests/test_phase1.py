@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from thoughtvault.scanner import scan
+from thoughtvault.ask import answer_question
 from thoughtvault.exporter import export_markdown
 from thoughtvault.recall import recall
 from thoughtvault.reference import build_reference_cards, search_reference_cards
@@ -97,6 +98,31 @@ class Phase1ScanTests(unittest.TestCase):
             self.assertEqual(recall_results[0]["path"], "architecture.md")
             self.assertTrue(recall_results[0]["evidence"])
             self.assertIn("fastapi", recall_results[0]["technologies"])
+
+    def test_scan_extracts_excel_workbook_text(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "source"
+            source.mkdir()
+            workbook_path = source / "company.xlsx"
+
+            from openpyxl import Workbook
+
+            workbook = Workbook()
+            sheet = workbook.active
+            sheet.title = "Submission"
+            sheet.append(["Document code", "0061_202605"])
+            sheet.append(["Submission keyword", "勤怠表"])
+            workbook.save(workbook_path)
+
+            db_path = root / "thoughtvault.sqlite"
+            add_source(str(source), ["company", "reference"], db_path=str(db_path))
+            summary = scan(str(db_path))
+            self.assertEqual(summary.new, 1)
+
+            results = search("0061_202605", str(db_path))
+            self.assertTrue(results)
+            self.assertTrue(any(row["path"] == "company.xlsx" for row in results))
 
     def test_reference_cards_are_built_from_reference_sources(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -233,6 +259,37 @@ class Phase1ScanTests(unittest.TestCase):
             self.assertEqual(row[1], "ollama-v1")
             self.assertEqual(row[2], "test-model")
             self.assertEqual(row[3], "ai_suggested")
+
+    def test_ask_uses_retrieved_evidence_and_injected_generator(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "notes"
+            source.mkdir()
+            note = source / "memory.md"
+            note.write_text(
+                "# Memory System\n\n"
+                "ThoughtVault uses local AI with Ollama to answer from source-backed evidence.\n",
+                encoding="utf-8",
+            )
+            db_path = root / "thoughtvault.sqlite"
+
+            add_source(str(source), ["memo"], db_path=str(db_path))
+            scan(str(db_path))
+
+            def fake_generator(prompt: str, model: str, host: str, timeout: float) -> str:
+                self.assertIn("local AI", prompt)
+                self.assertIn("memory.md", prompt)
+                self.assertEqual(model, "test-model")
+                return "ThoughtVault can answer with local AI from evidence [S1]."
+
+            result = answer_question(
+                "How does local AI help?",
+                str(db_path),
+                model="test-model",
+                generator=fake_generator,
+            )
+            self.assertIn("local AI", str(result["answer"]))
+            self.assertTrue(result["evidence"])
 
 
 if __name__ == "__main__":
