@@ -121,11 +121,11 @@ thoughtvault/
 
 ## Current Status
 
-Phase 6 has started. The repository now contains the product direction, architecture notes, data model draft, processing pipeline, phased roadmap, a minimal local scanner CLI, text chunking, trace extraction, SQLite FTS search, a first source-backed Recall Mode command, generated Reference Cards, Markdown export, rule-based Synthesis Notes, and optional local Ollama synthesis.
+Phase 7 has started. The repository now contains the product direction, architecture notes, data model draft, processing pipeline, phased roadmap, a local scanner CLI, text chunking, trace extraction, SQLite FTS search, source-backed Recall Mode, generated Reference Cards, Markdown export, rule-based Synthesis Notes, optional local Ollama synthesis, Excel/PDF text extraction, and a first local AI `ask` command for source-backed question answering.
 
 ## Next Step
 
-The next implementation milestone is making AI synthesis easier to review and trace, then expanding beyond Markdown and text files.
+The next implementation milestone is improving retrieval quality for fuzzy Chinese/Japanese questions, adding semantic search or embeddings, and making long-term memory summaries easier to review and export to Obsidian.
 
 ## Usage
 
@@ -164,6 +164,7 @@ python -m thoughtvault scan
 python -m thoughtvault documents
 python -m thoughtvault search "SQLite FTS5"
 python -m thoughtvault recall "FastAPI"
+python -m thoughtvault ask "What does this knowledge base say about local AI?" --model llama3.2:3b
 python -m thoughtvault reference build
 python -m thoughtvault reference list
 python -m thoughtvault synthesis build
@@ -182,6 +183,7 @@ thoughtvault scan
 thoughtvault documents
 thoughtvault search "SQLite FTS5"
 thoughtvault recall "FastAPI"
+thoughtvault ask "What does this knowledge base say about local AI?" --model llama3.2:3b
 thoughtvault reference build
 thoughtvault reference list
 thoughtvault synthesis build
@@ -309,6 +311,42 @@ Limit result count:
 ```powershell
 python -m thoughtvault search "SQLite" --limit 5
 ```
+
+### Ask With Local AI
+
+```powershell
+python -m thoughtvault ask "<question>" --model <ollama-model>
+```
+
+Examples:
+
+```powershell
+python -m thoughtvault ask "What does this knowledge base say about Ollama?" --model llama3.2:3b
+python -m thoughtvault ask "Summarize my notes about local AI." --model qwen2.5:3b
+python -m thoughtvault ask "勤怠表に関係する資料はどこにありますか？" --model llama3.2:3b
+```
+
+The `ask` command retrieves source-backed evidence from indexed chunks and traces, then asks local Ollama to answer using only that evidence. Answers should cite retrieved sources such as `[S1]` and avoid inventing unsupported facts.
+
+Inspect retrieved evidence without calling AI:
+
+```powershell
+python -m thoughtvault ask "Ollama local AI" --no-ai
+```
+
+By default, `ask` calls:
+
+```text
+http://127.0.0.1:11434
+```
+
+Use a different Ollama host:
+
+```powershell
+python -m thoughtvault ask "local AI" --model llama3.2:3b --ollama-host http://127.0.0.1:11434
+```
+
+Current `ask` is retrieval-augmented generation over indexed evidence. It is useful for fuzzy recall, synthesis, and source-backed explanation. It is not yet a structured analytics engine for guaranteed table calculations.
 
 ### Recall
 
@@ -533,15 +571,25 @@ Phase 6 adds:
 - AI fallback status when local generation fails
 - Markdown synthesis note export under `Knowledge/`
 
+Phase 7 adds:
+
+- Excel extraction for `.xlsx`, `.xlsm`, and `.xls`
+- PDF text extraction
+- `thoughtvault ask <question>`
+- local Ollama-powered, source-backed Q&A over indexed chunks and traces
+- `--no-ai` evidence inspection for Q&A debugging
+- improved UTF-8 CLI output handling for multilingual answers
+
 ## Current Limits
 
 Not implemented yet:
 
-- PDF, Word, Excel, and image/OCR extraction
-- broader AI summarization across more file types
-- AI-generated natural-language Recall Mode answers
+- Word and image/OCR extraction
+- semantic search or vector database
+- long-term memory summaries that are automatically refreshed
+- automatic Obsidian note organization beyond Markdown export
+- structured table analytics for precise calculations such as monthly totals
 - advanced Reference Cards with user review and masking
 - Memo clustering and thought extension
 - advanced Markdown export conflict review
 - Web UI
-- semantic search or vector database
