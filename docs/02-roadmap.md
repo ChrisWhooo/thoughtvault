@@ -159,41 +159,80 @@ Exit criteria:
 - summaries include source references
 - AI failure does not block indexing, recall, or reference lookup
 
-## Phase 7: Semantic Search
+## Phase 7: Local Knowledge Ask
+
+Goal: let users ask natural-language questions over indexed local files with source-backed answers.
+
+Features:
+
+- `thoughtvault ask <question>`
+- retrieve evidence from chunks and traces
+- call local Ollama for source-backed answers
+- print evidence after AI answers
+- support `--no-ai` for evidence inspection
+- extract text from Excel and text-based PDF files
+
+Exit criteria:
+
+- users can ask questions without manually opening source files
+- answers include source-backed evidence
+- AI failure falls back to evidence retrieval
+
+## Phase 8: Reliable Local Knowledge Q&A
+
+Goal: make local knowledge answers stable, reviewable, and reusable enough for productization.
+
+Features:
+
+- save Ask Records in SQLite
+- list and show past Ask Records
+- export Ask Records to Markdown
+- support stricter evidence-grounded answering
+- support JSON output for future UI/API integration
+- keep answers traceable even when model citations are imperfect
+
+Exit criteria:
+
+- users can review what they asked and which sources supported the answer
+- exported Q&A history can be opened in Obsidian or another Markdown tool
+- unsupported answers degrade to evidence-only output
+
+## Phase 9: Semantic Retrieval
 
 Goal: search by meaning, not only exact words.
 
 Features:
 
-- generate embeddings for chunks, traces, recall items, and synthesis notes
-- store embeddings in LanceDB or Chroma
+- generate embeddings for chunks, traces, Ask Records, and synthesis notes
+- store embeddings locally
 - semantic search command
-- combine keyword search, trace search, and vector search
+- combine keyword search, trace search, and vector ranking
 
 Exit criteria:
 
-- user can search for related ideas even when exact keywords differ
+- users can search for related ideas even when exact keywords differ
 - search results keep source file and chunk references
 
-## Phase 8: Local Web UI
+## Phase 10: Local Web UI
 
-Goal: make recall, reference lookup, and synthesis easier to inspect and review.
+Goal: make recall, reference lookup, Q&A, and synthesis easier to inspect and review.
 
 Views:
 
 - dashboard
 - source browser
-- search page
+- search and ask page
 - Recall Mode page
 - Reference Mode page
 - Synthesis Mode page
+- Ask history page
 - document detail page
 - review queue
 
 Exit criteria:
 
-- user can browse, search, and review generated outputs without CLI
-- new summaries, cards, and synthesis notes can be accepted or rejected in the UI
+- users can browse, search, ask, and review generated outputs without CLI
+- new summaries, cards, answers, and synthesis notes can be accepted or rejected in the UI
 
 ## Suggested MVP
 

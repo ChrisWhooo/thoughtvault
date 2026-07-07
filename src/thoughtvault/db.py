@@ -125,6 +125,20 @@ CREATE TABLE IF NOT EXISTS synthesis_notes (
 CREATE INDEX IF NOT EXISTS idx_synthesis_notes_source_id ON synthesis_notes(source_id);
 CREATE INDEX IF NOT EXISTS idx_synthesis_notes_type ON synthesis_notes(note_type);
 CREATE INDEX IF NOT EXISTS idx_synthesis_notes_status ON synthesis_notes(status);
+
+CREATE TABLE IF NOT EXISTS ask_records (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    query TEXT NOT NULL,
+    answer TEXT NOT NULL,
+    evidence_json TEXT NOT NULL,
+    model TEXT NOT NULL DEFAULT 'none',
+    prompt_version TEXT NOT NULL DEFAULT 'ask-v1',
+    status TEXT NOT NULL DEFAULT 'answered',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_ask_records_created_at ON ask_records(created_at);
+CREATE INDEX IF NOT EXISTS idx_ask_records_status ON ask_records(status);
 """
 
 

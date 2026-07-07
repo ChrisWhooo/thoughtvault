@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
 from .db import init_db
 from .exporter import export_markdown
-from .ask import answer_question
+from .ask import answer_question, evidence_to_dict, get_ask_record, list_ask_records
 from .recall import recall
 from .reference import build_reference_cards, list_reference_cards, search_reference_cards
 from .scanner import list_documents, scan
@@ -66,7 +67,11 @@ def build_parser() -> argparse.ArgumentParser:
     search_parser.add_argument("--limit", type=int, default=10, help="Maximum results to show.")
 
     ask_parser = subparsers.add_parser("ask", help="Ask a source-backed local AI question.")
-    ask_parser.add_argument("query", help="Question to answer from indexed local knowledge.")
+    ask_parser.add_argument(
+        "query",
+        nargs="+",
+        help='Question to answer, or "history" / "show <id>".',
+    )
     ask_parser.add_argument(
         "--model",
         default=DEFAULT_OLLAMA_MODEL,
@@ -80,6 +85,8 @@ def build_parser() -> argparse.ArgumentParser:
     ask_parser.add_argument("--timeout", type=float, default=120.0, help="Ollama request timeout in seconds.")
     ask_parser.add_argument("--limit", type=int, default=8, help="Maximum evidence items to retrieve.")
     ask_parser.add_argument("--no-ai", action="store_true", help="Show retrieved evidence without AI generation.")
+    ask_parser.add_argument("--strict", action="store_true", help="Use a stricter evidence-grounded answer prompt.")
+    ask_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON output.")
 
     recall_parser = subparsers.add_parser("recall", help="Recall past exposure with source-backed evidence.")
     recall_parser.add_argument("query", help="Recall query.")
@@ -195,6 +202,26 @@ def print_ask_evidence(evidence: object) -> None:
         print(f"- [{item.source_id}] {item.path} ({item.kind}): {snippet}")
 
 
+def print_ask_record(record: dict[str, object]) -> None:
+    print(f"Ask record #{record['id']}")
+    print(f"Status: {record['status']}")
+    print(f"Model: {record['model']}")
+    print(f"Created: {record['created_at']}")
+    print()
+    print("Question:")
+    print(record["query"])
+    print()
+    print("Answer:")
+    print(record["answer"])
+    print_ask_evidence(record.get("evidence"))
+
+
+def ask_result_to_json(result: dict[str, object]) -> str:
+    payload = dict(result)
+    payload["evidence"] = [evidence_to_dict(item) for item in result.get("evidence", [])]
+    return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
 def main(argv: list[str] | None = None) -> None:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -254,15 +281,47 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     if args.command == "ask":
+        ask_args = list(args.query)
+        if ask_args[0] == "history":
+            rows = list_ask_records(args.db, args.limit)
+            if args.json:
+                print(json.dumps(rows, ensure_ascii=False, indent=2))
+            else:
+                print_rows(rows, ["id", "query", "model", "status", "created_at"])
+            return
+
+        if ask_args[0] == "show":
+            if len(ask_args) < 2:
+                parser.error("ask show requires a record id")
+            record = get_ask_record(int(ask_args[1]), args.db)
+            if record is None:
+                print("No ask record found.")
+                return
+            if args.json:
+                record_payload = dict(record)
+                record_payload["evidence"] = [evidence_to_dict(item) for item in record.get("evidence", [])]
+                print(json.dumps(record_payload, ensure_ascii=False, indent=2))
+            else:
+                print_ask_record(record)
+            return
+
+        query = " ".join(ask_args)
         result = answer_question(
-            args.query,
+            query,
             args.db,
             model=args.model,
             ollama_host=args.ollama_host,
             timeout=args.timeout,
             limit=args.limit,
             use_ai=not args.no_ai,
+            strict=args.strict,
         )
+        if args.json:
+            print(ask_result_to_json(result))
+            return
+        if result.get("record_id"):
+            print(f"Ask record saved: id={result['record_id']} status={result['status']}")
+            print()
         print(result["answer"])
         if not args.no_ai:
             print_ask_evidence(result.get("evidence"))

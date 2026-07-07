@@ -118,6 +118,13 @@ def export_markdown(
             ORDER BY synthesis_notes.note_type, synthesis_notes.title
             """
         ).fetchall()
+        ask_records = conn.execute(
+            """
+            SELECT id, query, answer, evidence_json, model, prompt_version, status, created_at
+            FROM ask_records
+            ORDER BY id DESC
+            """
+        ).fetchall()
 
         index_lines = [
             frontmatter({"type": "index", "generated_by": "thoughtvault"}),
@@ -143,6 +150,10 @@ def export_markdown(
         for note in synthesis_notes:
             note_name = f"{note['id']}-{slugify(note['title'])}.md"
             index_lines.append(f"- [[Knowledge/{note_name[:-3]}|{note['title']}]]")
+        index_lines.extend(["", "## Ask Records", ""])
+        for record in ask_records:
+            note_name = f"{record['id']}-{slugify(record['query'])}.md"
+            index_lines.append(f"- [[Ask/{note_name[:-3]}|{record['query']}]]")
 
         if write_text(output / "_Index.md", "\n".join(index_lines) + "\n", overwrite):
             written += 1
@@ -277,6 +288,46 @@ def export_markdown(
                 f"- Source chunk ids: `{note['source_chunk_ids']}`",
             ]
             path = output / "Knowledge" / f"{note['id']}-{slugify(note['title'])}.md"
+            if write_text(path, "\n".join(lines).rstrip() + "\n", overwrite):
+                written += 1
+            else:
+                skipped += 1
+
+        for record in ask_records:
+            evidence = json.loads(record["evidence_json"])
+            lines = [
+                frontmatter(
+                    {
+                        "type": "ask_record",
+                        "generated_by": "thoughtvault",
+                        "status": record["status"],
+                        "model": record["model"],
+                        "prompt_version": record["prompt_version"],
+                        "created_at": record["created_at"],
+                    }
+                ),
+                "",
+                f"# Ask {record['id']}: {record['query']}",
+                "",
+                "## Question",
+                "",
+                record["query"],
+                "",
+                "## Answer",
+                "",
+                record["answer"],
+                "",
+                "## Evidence",
+                "",
+            ]
+            if evidence:
+                for item in evidence:
+                    lines.append(
+                        f"- **[{item['source_id']}] {item['path']}** ({item['kind']}): {item['snippet']}"
+                    )
+            else:
+                lines.append("- No evidence retrieved.")
+            path = output / "Ask" / f"{record['id']}-{slugify(record['query'])}.md"
             if write_text(path, "\n".join(lines).rstrip() + "\n", overwrite):
                 written += 1
             else:

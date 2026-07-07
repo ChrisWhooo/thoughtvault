@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from thoughtvault.scanner import scan
-from thoughtvault.ask import answer_question
+from thoughtvault.ask import answer_question, get_ask_record, list_ask_records
 from thoughtvault.exporter import export_markdown
 from thoughtvault.recall import recall
 from thoughtvault.reference import build_reference_cards, search_reference_cards
@@ -290,6 +290,17 @@ class Phase1ScanTests(unittest.TestCase):
             )
             self.assertIn("local AI", str(result["answer"]))
             self.assertTrue(result["evidence"])
+            self.assertEqual(result["status"], "answered")
+            self.assertGreater(int(result["record_id"]), 0)
+
+            history = list_ask_records(str(db_path))
+            self.assertEqual(len(history), 1)
+            self.assertEqual(history[0]["status"], "answered")
+
+            record = get_ask_record(int(result["record_id"]), str(db_path))
+            self.assertIsNotNone(record)
+            self.assertEqual(record["query"], "How does local AI help?")
+            self.assertTrue(record["evidence"])
 
     def test_ask_falls_back_to_evidence_when_ai_fails(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -318,7 +329,32 @@ class Phase1ScanTests(unittest.TestCase):
             self.assertIn("AI generation failed", str(result["answer"]))
             self.assertIn("memory.md", str(result["answer"]))
             self.assertEqual(result["ai_error"], "local model unavailable")
+            self.assertEqual(result["status"], "ai_failed")
             self.assertTrue(result["evidence"])
+
+    def test_markdown_export_writes_ask_records(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "notes"
+            source.mkdir()
+            note = source / "memory.md"
+            note.write_text(
+                "# Memory System\n\n"
+                "ThoughtVault records source-backed ask answers for later review.\n",
+                encoding="utf-8",
+            )
+            db_path = root / "thoughtvault.sqlite"
+            output = root / "Vault"
+
+            add_source(str(source), ["memo"], db_path=str(db_path))
+            scan(str(db_path))
+
+            answer_question("source-backed ask answers", str(db_path), use_ai=False)
+            export_markdown(output, str(db_path))
+
+            self.assertTrue(any((output / "Ask").glob("*.md")))
+            index = (output / "_Index.md").read_text(encoding="utf-8")
+            self.assertIn("Ask Records", index)
 
 
 if __name__ == "__main__":
