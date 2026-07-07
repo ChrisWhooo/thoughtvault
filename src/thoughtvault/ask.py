@@ -265,5 +265,14 @@ def answer_question(
         return {"answer": "\n".join(lines), "evidence": evidence}
 
     prompt = build_answer_prompt(query, evidence)
-    answer = generator(prompt, model, ollama_host, timeout)
+    try:
+        answer = generator(prompt, model, ollama_host, timeout)
+    except RuntimeError as exc:
+        lines = [
+            f"AI generation failed, so ThoughtVault is showing retrieved evidence instead: {exc}",
+            "",
+        ]
+        for item in evidence:
+            lines.append(f"- [{item.source_id}] {item.path}: {item.snippet}")
+        return {"answer": "\n".join(lines), "evidence": evidence, "ai_error": str(exc)}
     return {"answer": answer, "evidence": evidence}

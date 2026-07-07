@@ -164,7 +164,7 @@ python -m thoughtvault scan
 python -m thoughtvault documents
 python -m thoughtvault search "SQLite FTS5"
 python -m thoughtvault recall "FastAPI"
-python -m thoughtvault ask "What does this knowledge base say about local AI?" --model llama3.2:3b
+python -m thoughtvault ask "What does this knowledge base say about local AI?" --model qwen2.5:3b
 python -m thoughtvault reference build
 python -m thoughtvault reference list
 python -m thoughtvault synthesis build
@@ -183,7 +183,7 @@ thoughtvault scan
 thoughtvault documents
 thoughtvault search "SQLite FTS5"
 thoughtvault recall "FastAPI"
-thoughtvault ask "What does this knowledge base say about local AI?" --model llama3.2:3b
+thoughtvault ask "What does this knowledge base say about local AI?" --model qwen2.5:3b
 thoughtvault reference build
 thoughtvault reference list
 thoughtvault synthesis build
@@ -321,12 +321,12 @@ python -m thoughtvault ask "<question>" --model <ollama-model>
 Examples:
 
 ```powershell
-python -m thoughtvault ask "What does this knowledge base say about Ollama?" --model llama3.2:3b
+python -m thoughtvault ask "What does this knowledge base say about Ollama?" --model qwen2.5:3b
 python -m thoughtvault ask "Summarize my notes about local AI." --model qwen2.5:3b
-python -m thoughtvault ask "勤怠表に関係する資料はどこにありますか？" --model llama3.2:3b
+python -m thoughtvault ask "勤怠表に関係する資料はどこにありますか？" --model qwen2.5:3b
 ```
 
-The `ask` command retrieves source-backed evidence from indexed chunks and traces, then asks local Ollama to answer using only that evidence. Answers should cite retrieved sources such as `[S1]` and avoid inventing unsupported facts.
+The `ask` command retrieves source-backed evidence from indexed chunks and traces, then asks local Ollama to answer using only that evidence. Answers should cite retrieved sources such as `[S1]` and avoid inventing unsupported facts. The CLI also prints the retrieved evidence after AI answers so the response remains traceable even when the model does not cite every source correctly.
 
 Inspect retrieved evidence without calling AI:
 
@@ -343,7 +343,7 @@ http://127.0.0.1:11434
 Use a different Ollama host:
 
 ```powershell
-python -m thoughtvault ask "local AI" --model llama3.2:3b --ollama-host http://127.0.0.1:11434
+python -m thoughtvault ask "local AI" --model qwen2.5:3b --ollama-host http://127.0.0.1:11434
 ```
 
 Current `ask` is retrieval-augmented generation over indexed evidence. It is useful for fuzzy recall, synthesis, and source-backed explanation. It is not yet a structured analytics engine for guaranteed table calculations.
@@ -574,7 +574,7 @@ Phase 6 adds:
 Phase 7 adds:
 
 - Excel extraction for `.xlsx`, `.xlsm`, and `.xls`
-- PDF text extraction
+- text-based PDF extraction
 - `thoughtvault ask <question>`
 - local Ollama-powered, source-backed Q&A over indexed chunks and traces
 - `--no-ai` evidence inspection for Q&A debugging
@@ -584,7 +584,7 @@ Phase 7 adds:
 
 Not implemented yet:
 
-- Word and image/OCR extraction
+- Word, image/OCR extraction, and scanned PDF OCR
 - semantic search or vector database
 - long-term memory summaries that are automatically refreshed
 - automatic Obsidian note organization beyond Markdown export

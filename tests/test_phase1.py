@@ -291,6 +291,35 @@ class Phase1ScanTests(unittest.TestCase):
             self.assertIn("local AI", str(result["answer"]))
             self.assertTrue(result["evidence"])
 
+    def test_ask_falls_back_to_evidence_when_ai_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "notes"
+            source.mkdir()
+            note = source / "memory.md"
+            note.write_text(
+                "# Memory System\n\n"
+                "ThoughtVault keeps answers grounded in source-backed evidence.\n",
+                encoding="utf-8",
+            )
+            db_path = root / "thoughtvault.sqlite"
+
+            add_source(str(source), ["memo"], db_path=str(db_path))
+            scan(str(db_path))
+
+            def failing_generator(prompt: str, model: str, host: str, timeout: float) -> str:
+                raise RuntimeError("local model unavailable")
+
+            result = answer_question(
+                "source-backed evidence",
+                str(db_path),
+                generator=failing_generator,
+            )
+            self.assertIn("AI generation failed", str(result["answer"]))
+            self.assertIn("memory.md", str(result["answer"]))
+            self.assertEqual(result["ai_error"], "local model unavailable")
+            self.assertTrue(result["evidence"])
+
 
 if __name__ == "__main__":
     unittest.main()

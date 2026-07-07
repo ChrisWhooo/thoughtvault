@@ -185,6 +185,16 @@ def print_recall_results(rows: list[dict[str, object]]) -> None:
         print()
 
 
+def print_ask_evidence(evidence: object) -> None:
+    if not evidence:
+        return
+    print()
+    print("Evidence:")
+    for item in evidence:
+        snippet = " ".join(str(item.snippet).split())
+        print(f"- [{item.source_id}] {item.path} ({item.kind}): {snippet}")
+
+
 def main(argv: list[str] | None = None) -> None:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -254,6 +264,8 @@ def main(argv: list[str] | None = None) -> None:
             use_ai=not args.no_ai,
         )
         print(result["answer"])
+        if not args.no_ai:
+            print_ask_evidence(result.get("evidence"))
         return
 
     if args.command == "recall":
