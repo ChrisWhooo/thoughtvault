@@ -24,6 +24,7 @@ from thoughtvault.ask import (
 from thoughtvault.exporter import export_markdown
 from thoughtvault.embeddings import build_embeddings, embedding_status
 from thoughtvault.evaluation import load_evaluation_cases, run_evaluation
+from thoughtvault.facts import build_facts, list_fact_conflicts, list_facts, review_fact
 from thoughtvault.recall import recall
 from thoughtvault.reference import build_reference_cards, search_reference_cards
 from thoughtvault.search import search
@@ -586,6 +587,71 @@ class Phase1ScanTests(unittest.TestCase):
             self.assertEqual(summary.total, 2)
             self.assertEqual(summary.passed, 2)
             self.assertEqual(summary.failed, 0)
+
+    def test_facts_build_incrementally_detects_and_reviews_conflicts(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "notes"
+            source.mkdir()
+            (source / "profile-a.md").write_text(
+                "# 人物档案：武汉\n\n- 常驻地：东京\n",
+                encoding="utf-8",
+            )
+            (source / "profile-b.md").write_text(
+                "# 人物档案：武汉\n\n- 常驻地：大阪\n",
+                encoding="utf-8",
+            )
+            db_path = root / "thoughtvault.sqlite"
+            add_source(str(source), ["personal"], db_path=str(db_path))
+            scan(str(db_path))
+
+            first = build_facts(str(db_path))
+            self.assertEqual(first.documents, 2)
+            self.assertEqual(first.rebuilt, 2)
+            self.assertGreaterEqual(first.facts, 2)
+
+            second = build_facts(str(db_path))
+            self.assertEqual(second.rebuilt, 0)
+            self.assertEqual(second.unchanged, 2)
+
+            conflicts = list_fact_conflicts(str(db_path))
+            location_conflict = next(
+                row for row in conflicts
+                if row["subject"] == "武汉" and row["predicate"] == "location"
+            )
+            self.assertEqual(location_conflict["value_count"], 2)
+
+            facts = list_facts(str(db_path), fact_type="location")
+            osaka = next(row for row in facts if row["normalized_value"] == "大阪")
+            reviewed = review_fact(int(osaka["id"]), "rejected", str(db_path))
+            self.assertEqual(reviewed["status"], "rejected")
+            self.assertFalse(list_fact_conflicts(str(db_path)))
+
+            rebuilt = build_facts(str(db_path), force=True)
+            self.assertEqual(rebuilt.rebuilt, 2)
+            rejected = list_facts(str(db_path), status="rejected")
+            self.assertTrue(any(row["normalized_value"] == "大阪" for row in rejected))
+            self.assertFalse(list_fact_conflicts(str(db_path)))
+
+    def test_facts_normalize_monthly_transport_totals(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "notes"
+            source.mkdir()
+            (source / "travel.md").write_text(
+                "# 2026 年 5 月差旅\n\n交通费合计：2,580 日元\n",
+                encoding="utf-8",
+            )
+            db_path = root / "thoughtvault.sqlite"
+            add_source(str(source), ["personal"], db_path=str(db_path))
+            scan(str(db_path))
+            build_facts(str(db_path))
+
+            facts = list_facts(str(db_path), fact_type="amount")
+            total = next(row for row in facts if row["predicate"] == "transport_total")
+            self.assertEqual(total["subject"], "2026-05")
+            self.assertEqual(total["normalized_value"], "2580")
+            self.assertEqual(total["unit"], "JPY")
 
 
 if __name__ == "__main__":

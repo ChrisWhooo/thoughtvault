@@ -14,6 +14,7 @@ from .embeddings import (
 )
 from .evaluation import run_evaluation
 from .exporter import export_markdown
+from .facts import build_facts, list_fact_conflicts, list_facts, review_fact
 from .ask import (
     DEFAULT_EVIDENCE_LIMIT,
     answer_question,
@@ -180,6 +181,36 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate_parser.add_argument("--limit", type=int, default=DEFAULT_EVIDENCE_LIMIT)
     evaluate_parser.add_argument("--no-ai", action="store_true")
     evaluate_parser.add_argument("--no-semantic", action="store_true")
+
+    facts_parser = subparsers.add_parser(
+        "facts",
+        help="Build and review structured source-backed facts.",
+    )
+    facts_subparsers = facts_parser.add_subparsers(dest="facts_command", required=True)
+
+    facts_build = facts_subparsers.add_parser(
+        "build",
+        help="Extract facts from new or changed documents.",
+    )
+    facts_build.add_argument("--force", action="store_true", help="Rebuild all document facts.")
+
+    facts_list = facts_subparsers.add_parser("list", help="List extracted facts.")
+    facts_list.add_argument("--limit", type=int, default=50)
+    facts_list.add_argument("--status", choices=["proposed", "confirmed", "rejected"])
+    facts_list.add_argument("--type", dest="fact_type", default=None)
+
+    facts_conflicts = facts_subparsers.add_parser(
+        "conflicts",
+        help="List contradictory values for the same subject and predicate.",
+    )
+    facts_conflicts.add_argument("--limit", type=int, default=50)
+
+    facts_review = facts_subparsers.add_parser(
+        "review",
+        help="Change a fact review status.",
+    )
+    facts_review.add_argument("fact_id", type=int)
+    facts_review.add_argument("status", choices=["proposed", "confirmed", "rejected"])
 
     recall_parser = subparsers.add_parser("recall", help="Recall past exposure with source-backed evidence.")
     recall_parser.add_argument("query", help="Recall query.")
@@ -494,6 +525,51 @@ def main(argv: list[str] | None = None) -> None:
         if summary.failed:
             raise SystemExit(1)
         return
+
+    if args.command == "facts":
+        if args.facts_command == "build":
+            summary = build_facts(args.db, force=args.force)
+            print(
+                "Fact build complete: "
+                f"documents={summary.documents} "
+                f"rebuilt={summary.rebuilt} "
+                f"unchanged={summary.unchanged} "
+                f"facts={summary.facts} "
+                f"errors={summary.errors}"
+            )
+            return
+        if args.facts_command == "list":
+            rows = list_facts(
+                args.db,
+                limit=args.limit,
+                status=args.status,
+                fact_type=args.fact_type,
+            )
+            print_rows(
+                rows,
+                [
+                    "id", "fact_type", "subject", "predicate", "object_value",
+                    "unit", "event_date", "confidence", "status", "path",
+                ],
+            )
+            return
+        if args.facts_command == "conflicts":
+            rows = list_fact_conflicts(args.db, args.limit)
+            print_rows(
+                rows,
+                [
+                    "fact_type", "subject", "predicate", "event_date",
+                    "unit", "value_count", "values_text", "paths",
+                ],
+            )
+            return
+        if args.facts_command == "review":
+            row = review_fact(args.fact_id, args.status, args.db)
+            if row is None:
+                print("No fact found.")
+            else:
+                print_rows([row], ["id", "fact_type", "subject", "predicate", "object_value", "status"])
+            return
 
     if args.command == "recall":
         rows = recall(args.query, args.db, args.limit, args.evidence_limit)

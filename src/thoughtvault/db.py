@@ -154,6 +154,39 @@ CREATE TABLE IF NOT EXISTS ask_records (
 
 CREATE INDEX IF NOT EXISTS idx_ask_records_created_at ON ask_records(created_at);
 CREATE INDEX IF NOT EXISTS idx_ask_records_status ON ask_records(status);
+
+CREATE TABLE IF NOT EXISTS facts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    chunk_id INTEGER REFERENCES chunks(id) ON DELETE CASCADE,
+    fact_type TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    predicate TEXT NOT NULL,
+    object_value TEXT NOT NULL,
+    normalized_value TEXT NOT NULL,
+    unit TEXT,
+    event_date TEXT,
+    confidence REAL NOT NULL,
+    extractor TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'proposed',
+    source_text TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(chunk_id, fact_type, subject, predicate, normalized_value, event_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_facts_document_id ON facts(document_id);
+CREATE INDEX IF NOT EXISTS idx_facts_chunk_id ON facts(chunk_id);
+CREATE INDEX IF NOT EXISTS idx_facts_subject_predicate ON facts(subject, predicate);
+CREATE INDEX IF NOT EXISTS idx_facts_type ON facts(fact_type);
+CREATE INDEX IF NOT EXISTS idx_facts_status ON facts(status);
+
+CREATE TABLE IF NOT EXISTS fact_build_state (
+    document_id INTEGER PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+    content_hash TEXT NOT NULL,
+    extractor_version TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 

@@ -121,11 +121,11 @@ thoughtvault/
 
 ## Current Status
 
-Phase 8 is complete. ThoughtVault now includes incremental local vector indexing, multilingual semantic retrieval through Ollama embeddings, hybrid lexical/semantic evidence ranking, source-backed local AI answers, durable ask history, deterministic handling for selected date, contact, and monthly-total questions, and repeatable JSON evaluation suites.
+Phase 8 is complete and Phase 9 has started. ThoughtVault now includes incremental local vector indexing, multilingual semantic retrieval through Ollama embeddings, hybrid lexical/semantic evidence ranking, source-backed local AI answers, durable ask history, deterministic handling for selected date, contact, and monthly-total questions, repeatable JSON evaluation suites, and a first reviewable structured-fact layer.
 
 ## Next Step
 
-The next implementation milestone is adding a repeatable evaluation command, broader structured fact extraction, conflict detection, and reviewable long-term memory summaries.
+The next implementation milestone is expanding structured fact coverage, using confirmed facts during answers, and adding stronger conflict review before long-term memory compilation.
 
 ## Usage
 
@@ -190,6 +190,8 @@ thoughtvault embeddings build
 thoughtvault embeddings status
 thoughtvault ask "What does this knowledge base say about local AI?" --model qwen3:14b
 thoughtvault evaluate .\examples\phase8-evaluation.json
+thoughtvault facts build
+thoughtvault facts conflicts
 thoughtvault reference build
 thoughtvault reference list
 thoughtvault synthesis build
@@ -415,6 +417,31 @@ Evaluation suites are JSON files containing questions and optional checks:
 ```
 
 The command exits with a non-zero status when any case fails. Use `--no-ai` to evaluate retrieval without generation or `--no-semantic` to compare lexical-only retrieval.
+
+### Structured Facts
+
+Build facts from new or changed documents:
+
+```powershell
+thoughtvault facts build
+```
+
+Inspect extracted facts and conflicts:
+
+```powershell
+thoughtvault facts list --limit 50
+thoughtvault facts list --type amount
+thoughtvault facts conflicts
+```
+
+Confirm or reject a proposed fact:
+
+```powershell
+thoughtvault facts review 1 confirmed
+thoughtvault facts review 2 rejected
+```
+
+Facts preserve their source document, chunk, original text, normalized value, unit, event date, confidence, extractor version, and review status. Confirmed or rejected status is retained when an unchanged fact is rebuilt.
 
 ### Recall
 
@@ -662,12 +689,25 @@ Phase 8 adds:
 - `thoughtvault evaluate <suite.json>`
 - repeatable source, answer-content, exclusion, and refusal checks
 
+Phase 9 has started with:
+
+- `thoughtvault facts build`
+- `thoughtvault facts list`
+- `thoughtvault facts conflicts`
+- `thoughtvault facts review`
+- incremental fact extraction keyed by document hash and extractor version
+- normalized monthly transport totals, dates, amounts, people, locations, decisions, and fields
+- source-backed confidence and `proposed`, `confirmed`, or `rejected` review states
+- conflict detection for competing single-value facts
+- review-state preservation across fact rebuilds
+
 ## Current Limits
 
 Not implemented yet:
 
 - Word, image/OCR extraction, and scanned PDF OCR
 - long-term memory summaries that are automatically refreshed
+- confirmed-fact retrieval integrated into `ask`
 - automatic Obsidian note organization beyond Markdown export
 - general structured table analytics beyond currently supported monthly-total patterns
 - advanced Reference Cards with user review and masking
