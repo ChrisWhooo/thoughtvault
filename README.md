@@ -1,22 +1,22 @@
 # ThoughtVault
 
-ThoughtVault is a local-first personal knowledge base and memory retrieval system.
+ThoughtVault is a local-first personal memory and knowledge system.
 
-It helps users add local folders as sources, ask natural-language questions across their files, retrieve personal or work reference information, and turn scattered project materials or memos into structured knowledge notes, while keeping every generated result traceable to source files.
+It helps users recall past projects, retrieve personal or work reference information, and turn scattered project materials or memos into structured knowledge notes, while keeping every generated result traceable to source files.
 
 The project starts from a simple idea:
 
-> Keep original files local, build a searchable knowledge index from them, and use AI to help users recall, retrieve, summarize, and analyze what they have touched before.
+> Keep original files local, build a searchable memory index from them, and use AI to help recall, retrieve, synthesize, and extend what the user has touched before.
 
 ## Goals
 
-- Build a local knowledge index from folders such as projects, reference documents, company records, personal files, Obsidian notes, and AI conversation memos.
+- Build a local memory index from folders such as projects, reference documents, company records, personal files, Obsidian notes, and AI conversation memos.
 - Preserve original files as the source of truth.
 - Support project recall: recover project details, technologies used, decisions made, and lessons learned.
 - Support reference retrieval: find and reuse information from past submissions, forms, company materials, and personal records.
-- Support synthesis: organize project knowledge and scattered memos into structured notes and technical references.
+- Support synthesis: organize project knowledge and scattered philosophical memos into structured notes, technical references, and thought extensions.
 - Generate structured Markdown notes that remain portable and Obsidian-friendly.
-- Provide a local Web UI later for search, recall, browsing, synthesis, relationship discovery, and review.
+- Provide a local Web UI for search, recall, browsing, synthesis, relationship discovery, and review.
 - Support local AI through Ollama first, with optional cloud AI later.
 - Make the memory base incremental: new files are detected, indexed, summarized, and linked to existing material.
 
@@ -114,18 +114,18 @@ thoughtvault/
 | Frontend | React or Next.js |
 | Metadata DB | SQLite |
 | Full-text search | SQLite FTS5 |
-| Vector index | LanceDB or Chroma |
+| Vector index | SQLite float32 embeddings |
 | Local AI | Ollama |
 | Markdown output | Obsidian-compatible Markdown |
 | Parsers | python-docx, openpyxl, pypdf, markdown parser |
 
 ## Current Status
 
-Phase 8 has started. The repository now contains the product direction, architecture notes, data model draft, processing pipeline, phased roadmap, a local scanner CLI, text chunking, trace extraction, SQLite FTS search, source-backed Recall Mode, generated Reference Cards, Markdown export, rule-based Synthesis Notes, optional local Ollama synthesis, Excel/PDF text extraction, local AI `ask`, saved Ask Records, and exportable source-backed Q&A history.
+Phase 8 is complete. ThoughtVault now includes incremental local vector indexing, multilingual semantic retrieval through Ollama embeddings, hybrid lexical/semantic evidence ranking, source-backed local AI answers, durable ask history, deterministic handling for selected date, contact, and monthly-total questions, and repeatable JSON evaluation suites.
 
 ## Next Step
 
-The next implementation milestone is improving retrieval quality for fuzzy Chinese/Japanese questions and adding semantic search or embeddings.
+The next implementation milestone is adding a repeatable evaluation command, broader structured fact extraction, conflict detection, and reviewable long-term memory summaries.
 
 ## Usage
 
@@ -164,12 +164,14 @@ python -m thoughtvault scan
 python -m thoughtvault documents
 python -m thoughtvault search "SQLite FTS5"
 python -m thoughtvault recall "FastAPI"
-python -m thoughtvault ask "What does this knowledge base say about local AI?" --model qwen2.5:3b
-python -m thoughtvault ask history
+python -m thoughtvault embeddings build
+python -m thoughtvault embeddings status
+python -m thoughtvault ask "What does this knowledge base say about local AI?" --model qwen3:14b
+python -m thoughtvault evaluate .\examples\phase8-evaluation.json
 python -m thoughtvault reference build
 python -m thoughtvault reference list
 python -m thoughtvault synthesis build
-python -m thoughtvault synthesis build --ai --model qwen2.5:3b
+python -m thoughtvault synthesis build --ai --model qwen3:14b
 python -m thoughtvault synthesis list
 python -m thoughtvault export .\Vault
 ```
@@ -184,12 +186,14 @@ thoughtvault scan
 thoughtvault documents
 thoughtvault search "SQLite FTS5"
 thoughtvault recall "FastAPI"
-thoughtvault ask "What does this knowledge base say about local AI?" --model qwen2.5:3b
-thoughtvault ask history
+thoughtvault embeddings build
+thoughtvault embeddings status
+thoughtvault ask "What does this knowledge base say about local AI?" --model qwen3:14b
+thoughtvault evaluate .\examples\phase8-evaluation.json
 thoughtvault reference build
 thoughtvault reference list
 thoughtvault synthesis build
-thoughtvault synthesis build --ai --model qwen2.5:3b
+thoughtvault synthesis build --ai --model qwen3:14b
 thoughtvault synthesis list
 thoughtvault export .\Vault
 ```
@@ -316,6 +320,15 @@ python -m thoughtvault search "SQLite" --limit 5
 
 ### Ask With Local AI
 
+Build the semantic index after scanning new or changed documents:
+
+```powershell
+python -m thoughtvault embeddings build --model qwen3-embedding:0.6b
+python -m thoughtvault embeddings status --model qwen3-embedding:0.6b
+```
+
+Embedding builds are incremental. Unchanged chunks are skipped.
+
 ```powershell
 python -m thoughtvault ask "<question>" --model <ollama-model>
 ```
@@ -323,12 +336,12 @@ python -m thoughtvault ask "<question>" --model <ollama-model>
 Examples:
 
 ```powershell
-python -m thoughtvault ask "What does this knowledge base say about Ollama?" --model qwen2.5:3b
-python -m thoughtvault ask "Summarize my notes about local AI." --model qwen2.5:3b
-python -m thoughtvault ask "勤怠表に関係する資料はどこにありますか？" --model qwen2.5:3b
+python -m thoughtvault ask "What does this knowledge base say about Ollama?" --model qwen3:14b
+python -m thoughtvault ask "Summarize my notes about local AI." --model qwen3:14b
+python -m thoughtvault ask "勤怠表に関係する資料はどこにありますか？" --model qwen3:14b
 ```
 
-The `ask` command retrieves source-backed evidence from indexed chunks and traces, then asks local Ollama to answer using only that evidence. Answers should cite retrieved sources such as `[S1]` and avoid inventing unsupported facts. The CLI also prints the retrieved evidence after AI answers so the response remains traceable even when the model does not cite every source correctly.
+The `ask` command combines SQLite FTS evidence with multilingual vector matches, expands useful answer-bearing chunks from relevant documents, and then asks local Ollama to answer from that evidence. The default models are `qwen3:14b` for generation and `qwen3-embedding:0.6b` for semantic retrieval.
 
 Inspect retrieved evidence without calling AI:
 
@@ -336,29 +349,33 @@ Inspect retrieved evidence without calling AI:
 python -m thoughtvault ask "Ollama local AI" --no-ai
 ```
 
-Use stricter answer rules:
+Compare lexical-only retrieval:
 
 ```powershell
-python -m thoughtvault ask "What does this project say about local AI?" --strict --model qwen2.5:3b
+python -m thoughtvault ask "Ollama local AI" --no-ai --no-semantic
 ```
 
-Print machine-readable output:
+Show full retrieved snippets:
 
 ```powershell
-python -m thoughtvault ask "local AI" --json --no-ai
+python -m thoughtvault ask "Ollama local AI" --verbose
 ```
 
-Ask records are saved to the local SQLite database by default. List recent questions:
+Use stricter grounding rules or machine-readable output:
+
+```powershell
+python -m thoughtvault ask "Ollama local AI" --strict
+python -m thoughtvault ask "Ollama local AI" --json
+```
+
+Answers and their retrieved evidence are saved locally. Inspect recent records:
 
 ```powershell
 python -m thoughtvault ask history
-```
-
-Show one saved question and answer:
-
-```powershell
 python -m thoughtvault ask show 1
 ```
+
+Ask records are also included under `Ask/` in Markdown exports.
 
 By default, `ask` calls:
 
@@ -369,10 +386,35 @@ http://127.0.0.1:11434
 Use a different Ollama host:
 
 ```powershell
-python -m thoughtvault ask "local AI" --model qwen2.5:3b --ollama-host http://127.0.0.1:11434
+python -m thoughtvault ask "local AI" --model qwen3:14b --ollama-host http://127.0.0.1:11434
 ```
 
 Current `ask` is retrieval-augmented generation over indexed evidence. It is useful for fuzzy recall, synthesis, and source-backed explanation. It is not yet a structured analytics engine for guaranteed table calculations.
+
+### Evaluate Retrieval And Answers
+
+```powershell
+python -m thoughtvault evaluate .\examples\phase8-evaluation.json
+```
+
+Evaluation suites are JSON files containing questions and optional checks:
+
+```json
+{
+  "cases": [
+    {
+      "id": "example",
+      "query": "When is the next review?",
+      "expected_paths": ["review.md"],
+      "answer_contains": ["2026-07-16"],
+      "answer_not_contains": ["unknown"],
+      "expect_refusal": false
+    }
+  ]
+}
+```
+
+The command exits with a non-zero status when any case fails. Use `--no-ai` to evaluate retrieval without generation or `--no-semantic` to compare lexical-only retrieval.
 
 ### Recall
 
@@ -459,7 +501,7 @@ Builds rule-based synthesis notes from indexed sources categorized as `project`,
 Use local Ollama for AI-assisted synthesis:
 
 ```powershell
-python -m thoughtvault synthesis build --ai --model qwen2.5:3b
+python -m thoughtvault synthesis build --ai --model qwen3:14b
 ```
 
 By default, AI synthesis calls:
@@ -530,8 +572,7 @@ Vault/
 |-- _Index.md
 |-- Sources/
 |-- References/
-|-- Knowledge/
-`-- Ask/
+`-- Knowledge/
 ```
 
 The export includes:
@@ -540,7 +581,6 @@ The export includes:
 - source notes for indexed documents
 - reference card notes for generated Reference Cards
 - synthesis notes for generated Synthesis Notes
-- saved Ask Records with answers and source-backed evidence
 - source paths
 - source hashes
 - trace lists
@@ -610,22 +650,26 @@ Phase 7 adds:
 
 Phase 8 adds:
 
-- saved Ask Records for source-backed Q&A history
-- `thoughtvault ask history`
-- `thoughtvault ask show <id>`
-- `thoughtvault ask --strict`
-- `thoughtvault ask --json`
-- Markdown export for Ask Records under `Ask/`
+- `thoughtvault embeddings build`
+- `thoughtvault embeddings status`
+- incremental chunk embeddings stored locally in SQLite
+- multilingual semantic retrieval with `qwen3-embedding`
+- hybrid lexical and semantic evidence ranking
+- relevant-document chunk expansion for answer-bearing dates and amounts
+- compact cited-source output with optional `--verbose`
+- deterministic monthly-total comparisons and conservative missing-fact refusal
+- durable ask records with history, detail, JSON, and Markdown export
+- `thoughtvault evaluate <suite.json>`
+- repeatable source, answer-content, exclusion, and refusal checks
 
 ## Current Limits
 
 Not implemented yet:
 
 - Word, image/OCR extraction, and scanned PDF OCR
-- semantic search or vector database
 - long-term memory summaries that are automatically refreshed
 - automatic Obsidian note organization beyond Markdown export
-- structured table analytics for precise calculations such as monthly totals
+- general structured table analytics beyond currently supported monthly-total patterns
 - advanced Reference Cards with user review and masking
 - Memo clustering and thought extension
 - advanced Markdown export conflict review

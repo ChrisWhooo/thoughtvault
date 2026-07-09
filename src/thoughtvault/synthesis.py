@@ -11,7 +11,7 @@ from .search import normalize_query
 
 SYNTHESIS_CATEGORIES = {"project", "memo", "conversation"}
 DEFAULT_OLLAMA_HOST = "http://127.0.0.1:11434"
-DEFAULT_OLLAMA_MODEL = "qwen2.5:3b"
+DEFAULT_OLLAMA_MODEL = "qwen3:14b"
 AI_PROMPT_VERSION = "ollama-v1"
 
 Generator = Callable[[str, str, str, float], str]

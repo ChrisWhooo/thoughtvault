@@ -178,40 +178,48 @@ Exit criteria:
 - answers include source-backed evidence
 - AI failure falls back to evidence retrieval
 
-## Phase 8: Reliable Local Knowledge Q&A
+## Phase 8: Reliable Hybrid Knowledge Q&A (Complete)
 
-Goal: make local knowledge answers stable, reviewable, and reusable enough for productization.
+Goal: make local knowledge answers semantic, stable, reviewable, and reusable enough for productization.
 
 Features:
 
+- generate and incrementally refresh local chunk embeddings
+- combine keyword, trace, and vector evidence ranking
+- support multilingual and cross-language retrieval
 - save Ask Records in SQLite
 - list and show past Ask Records
 - export Ask Records to Markdown
 - support stricter evidence-grounded answering
 - support JSON output for future UI/API integration
 - keep answers traceable even when model citations are imperfect
+- run repeatable JSON evaluation suites
 
 Exit criteria:
 
+- fuzzy questions can retrieve relevant material across Chinese and Japanese
 - users can review what they asked and which sources supported the answer
 - exported Q&A history can be opened in Obsidian or another Markdown tool
 - unsupported answers degrade to evidence-only output
+- automated retrieval and answer checks pass against a fixed evaluation suite
 
-## Phase 9: Semantic Retrieval
+## Phase 9: Structured Facts And Conflict Detection
 
-Goal: search by meaning, not only exact words.
+Goal: turn retrieved text into reviewable facts without losing source provenance.
 
 Features:
 
-- generate embeddings for chunks, traces, Ask Records, and synthesis notes
-- store embeddings locally
-- semantic search command
-- combine keyword search, trace search, and vector ranking
+- extract people, organizations, dates, places, amounts, events, and relationships
+- keep source location, confidence, and extraction method for every fact
+- detect conflicting values across files and dates
+- calculate supported totals and comparisons through deterministic tools
+- add a review state before inferred facts become durable knowledge
 
 Exit criteria:
 
-- users can search for related ideas even when exact keywords differ
-- search results keep source file and chunk references
+- factual answers can point to normalized, source-backed records
+- conflicting facts are shown rather than silently merged
+- unsupported calculations are refused instead of guessed
 
 ## Phase 10: Local Web UI
 
