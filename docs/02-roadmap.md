@@ -214,6 +214,8 @@ Features:
 - detect conflicting values across files and dates
 - calculate supported totals and comparisons through deterministic tools
 - add a review state before inferred facts become durable knowledge
+- prioritize confirmed facts during answers and exclude rejected facts
+- refuse to arbitrate conflicting confirmed values
 
 Exit criteria:
 

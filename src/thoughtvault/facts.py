@@ -378,6 +378,7 @@ def list_facts(
     limit: int = 50,
     status: str | None = None,
     fact_type: str | None = None,
+    query: str | None = None,
 ) -> list[dict[str, object]]:
     init_db(db_path)
     clauses = []
@@ -388,6 +389,16 @@ def list_facts(
     if fact_type:
         clauses.append("facts.fact_type = ?")
         params.append(fact_type)
+    if query:
+        clauses.append(
+            """
+            (facts.subject LIKE ? OR facts.predicate LIKE ?
+             OR facts.object_value LIKE ? OR facts.normalized_value LIKE ?
+             OR facts.source_text LIKE ? OR documents.path LIKE ?)
+            """
+        )
+        pattern = f"%{query}%"
+        params.extend([pattern] * 6)
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     params.append(limit)
     conn = connect(db_path)
@@ -410,6 +421,144 @@ def list_facts(
         return [dict(row) for row in rows]
     finally:
         conn.close()
+
+
+def search_confirmed_facts(
+    query: str,
+    db_path: str | None = None,
+    limit: int = 10,
+) -> list[dict[str, object]]:
+    init_db(db_path)
+    conn = connect(db_path)
+    try:
+        rows = conn.execute(
+            """
+            SELECT facts.id, facts.fact_type, facts.subject, facts.predicate,
+                   facts.object_value, facts.normalized_value, facts.unit,
+                   facts.event_date, facts.confidence, facts.source_text,
+                   source_roots.name AS source, documents.path, documents.title
+            FROM facts
+            JOIN documents ON documents.id = facts.document_id
+            JOIN source_roots ON source_roots.id = documents.source_id
+            WHERE facts.status = 'confirmed'
+              AND documents.document_status != 'deleted'
+            ORDER BY facts.confidence DESC, facts.id DESC
+            LIMIT 500
+            """
+        ).fetchall()
+        lowered_query = query.casefold()
+        requested_months = {
+            int(value)
+            for value in re.findall(r"(?<!\d)(1[0-2]|0?[1-9])\s*月", query)
+        }
+        concept_predicates = set()
+        if any(term in lowered_query for term in ("交通费", "交通費", "移動費", "电车费", "電車代")):
+            concept_predicates.add("transport_total")
+        if any(term in lowered_query for term in ("地点", "地方", "哪里", "哪儿", "場所", "どこ", "location")):
+            concept_predicates.add("location")
+        if any(term in lowered_query for term in ("决定", "決定", "decision")):
+            concept_predicates.add("decision")
+        if any(term in lowered_query for term in ("参加", "参与", "誰", "谁", "participant")):
+            concept_predicates.add("participant")
+
+        terms = [
+            term.casefold()
+            for term in re.findall(r"[A-Za-z0-9_]+|[\u3040-\u30ff\u3400-\u9fff]{2,}", query)
+        ]
+        matches = []
+        for row in rows:
+            haystack = " ".join(
+                str(row[key])
+                for key in (
+                    "subject", "predicate", "object_value", "normalized_value",
+                    "event_date", "source_text", "path",
+                )
+                if row[key] is not None
+            ).casefold()
+            score = 0.0
+            score += sum(1.0 for term in terms if term in haystack)
+            if row["predicate"] in concept_predicates:
+                score += 6.0
+            if requested_months and row["event_date"]:
+                try:
+                    fact_month = int(str(row["event_date"])[5:7])
+                except (ValueError, IndexError):
+                    fact_month = 0
+                if fact_month in requested_months:
+                    score += 8.0
+            if str(row["subject"]).casefold() in lowered_query:
+                score += 4.0
+            if score <= 0.0:
+                continue
+            result = dict(row)
+            result["match_score"] = score + float(row["confidence"])
+            matches.append(result)
+        return sorted(
+            matches,
+            key=lambda item: float(item["match_score"]),
+            reverse=True,
+        )[:limit]
+    finally:
+        conn.close()
+
+
+def fact_evidence_text(fact: dict[str, object]) -> str:
+    if fact["predicate"] == "transport_total":
+        return (
+            f"{fact['subject']} 交通费合计：{fact['object_value']}；"
+            "审核状态：confirmed"
+        )
+    date_part = f"；日期：{fact['event_date']}" if fact.get("event_date") else ""
+    return (
+        f"{fact['subject']} | {fact['predicate']}：{fact['object_value']}"
+        f"{date_part}；审核状态：confirmed"
+    )
+
+
+def search_confirmed_fact_conflicts(
+    query: str,
+    db_path: str | None = None,
+    limit: int = 10,
+) -> list[dict[str, object]]:
+    facts = search_confirmed_facts(query, db_path, limit=100)
+    grouped: dict[tuple[object, ...], dict[str, object]] = {}
+    for fact in facts:
+        if fact["fact_type"] in {"person", "decision"} or fact["predicate"] == "participant":
+            continue
+        key = (
+            fact["fact_type"],
+            fact["subject"],
+            fact["predicate"],
+            fact["event_date"] or "",
+            fact["unit"] or "",
+        )
+        group = grouped.setdefault(
+            key,
+            {
+                "fact_type": fact["fact_type"],
+                "subject": fact["subject"],
+                "predicate": fact["predicate"],
+                "event_date": fact["event_date"] or "",
+                "unit": fact["unit"] or "",
+                "values": {},
+            },
+        )
+        group["values"].setdefault(
+            fact["normalized_value"],
+            {
+                "object_value": fact["object_value"],
+                "path": fact["path"],
+            },
+        )
+    conflicts = []
+    for group in grouped.values():
+        values = group.pop("values")
+        if len(values) <= 1:
+            continue
+        group["value_count"] = len(values)
+        group["values"] = list(values.values())
+        conflicts.append(group)
+    return conflicts[:limit]
 
 
 def list_fact_conflicts(

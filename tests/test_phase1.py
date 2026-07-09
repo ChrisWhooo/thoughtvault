@@ -653,6 +653,85 @@ class Phase1ScanTests(unittest.TestCase):
             self.assertEqual(total["normalized_value"], "2580")
             self.assertEqual(total["unit"], "JPY")
 
+    def test_ask_prioritizes_confirmed_facts_and_refuses_confirmed_conflicts(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "notes"
+            source.mkdir()
+            (source / "profile-a.md").write_text(
+                "# 人物档案：武汉\n\n- 常驻地：东京\n",
+                encoding="utf-8",
+            )
+            (source / "profile-b.md").write_text(
+                "# 人物档案：武汉\n\n- 常驻地：大阪\n",
+                encoding="utf-8",
+            )
+            db_path = root / "thoughtvault.sqlite"
+            add_source(str(source), ["personal"], db_path=str(db_path))
+            scan(str(db_path))
+            build_facts(str(db_path))
+
+            locations = list_facts(str(db_path), fact_type="location")
+            for fact in locations:
+                review_fact(int(fact["id"]), "confirmed", str(db_path))
+
+            def should_not_generate(
+                prompt: str,
+                model: str,
+                host: str,
+                timeout: float,
+            ) -> str:
+                self.fail("The model must not arbitrate confirmed fact conflicts.")
+
+            conflict_result = answer_question(
+                "武汉住在哪里？",
+                str(db_path),
+                embedding_model=None,
+                save=False,
+                generator=should_not_generate,
+            )
+            self.assertEqual(conflict_result["status"], "fact_conflict")
+            self.assertIn("东京", conflict_result["answer"])
+            self.assertIn("大阪", conflict_result["answer"])
+
+            osaka = next(
+                fact for fact in list_facts(str(db_path), fact_type="location")
+                if fact["normalized_value"] == "大阪"
+            )
+            review_fact(int(osaka["id"]), "rejected", str(db_path))
+            evidence = retrieve_evidence(
+                "武汉住在哪里？",
+                str(db_path),
+                embedding_model=None,
+            )
+            confirmed = [item for item in evidence if item.kind == "fact:confirmed"]
+            self.assertTrue(confirmed)
+            self.assertIn("东京", confirmed[0].snippet)
+            self.assertFalse(any("大阪" in item.snippet for item in confirmed))
+
+    def test_verified_totals_cite_confirmed_facts_before_raw_chunks(self) -> None:
+        evidence = [
+            Evidence(
+                "S1", "demo", "may.md", "May", "fact:confirmed",
+                "2026-05 交通费合计：2,580 日元；审核状态：confirmed", 50,
+            ),
+            Evidence(
+                "S2", "demo", "june.md", "June", "fact:confirmed",
+                "2026-06 交通费合计：2,460 日元；审核状态：confirmed", 49,
+            ),
+            Evidence(
+                "S3", "demo", "may.md", "May", "chunk",
+                "2026 年 5 月交通费合计：2,580 日元", 10,
+            ),
+            Evidence(
+                "S4", "demo", "june.md", "June", "chunk",
+                "2026 年 6 月交通费合计：2,460 日元", 9,
+            ),
+        ]
+        answer = verified_numeric_answer("5月和6月哪个月交通费更高？", evidence)
+        self.assertIn("2,580 日元 [S1]", answer)
+        self.assertIn("2,460 日元 [S2]", answer)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -700,6 +700,9 @@ Phase 9 has started with:
 - source-backed confidence and `proposed`, `confirmed`, or `rejected` review states
 - conflict detection for competing single-value facts
 - review-state preservation across fact rebuilds
+- confirmed facts ranked ahead of raw chunks during `ask`
+- rejected facts excluded from answers
+- deterministic refusal when relevant confirmed facts conflict
 
 ## Current Limits
 
@@ -707,7 +710,7 @@ Not implemented yet:
 
 - Word, image/OCR extraction, and scanned PDF OCR
 - long-term memory summaries that are automatically refreshed
-- confirmed-fact retrieval integrated into `ask`
+- broader entity relationships and confirmed-fact coverage beyond current rule extractors
 - automatic Obsidian note organization beyond Markdown export
 - general structured table analytics beyond currently supported monthly-total patterns
 - advanced Reference Cards with user review and masking

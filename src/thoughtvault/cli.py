@@ -198,6 +198,7 @@ def build_parser() -> argparse.ArgumentParser:
     facts_list.add_argument("--limit", type=int, default=50)
     facts_list.add_argument("--status", choices=["proposed", "confirmed", "rejected"])
     facts_list.add_argument("--type", dest="fact_type", default=None)
+    facts_list.add_argument("--query", default=None)
 
     facts_conflicts = facts_subparsers.add_parser(
         "conflicts",
@@ -544,6 +545,7 @@ def main(argv: list[str] | None = None) -> None:
                 limit=args.limit,
                 status=args.status,
                 fact_type=args.fact_type,
+                query=args.query,
             )
             print_rows(
                 rows,

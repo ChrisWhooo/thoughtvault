@@ -13,6 +13,11 @@ from .embeddings import (
     generate_embeddings_with_ollama,
     semantic_search,
 )
+from .facts import (
+    fact_evidence_text,
+    search_confirmed_fact_conflicts,
+    search_confirmed_facts,
+)
 from .search import normalize_query
 from .synthesis import DEFAULT_OLLAMA_HOST, DEFAULT_OLLAMA_MODEL, generate_with_ollama
 
@@ -183,6 +188,20 @@ def retrieve_evidence(
     conn = connect(db_path)
     evidence: dict[tuple[str, str, str], Evidence] = {}
     try:
+        for fact in search_confirmed_facts(query, db_path, limit=max(limit * 2, 10)):
+            snippet = fact_evidence_text(fact)
+            kind = "fact:confirmed"
+            key = (str(fact["path"]), kind, snippet)
+            evidence[key] = Evidence(
+                source_id=f"S{len(evidence) + 1}",
+                source=str(fact["source"]),
+                path=str(fact["path"]),
+                title=str(fact["title"]),
+                kind=kind,
+                snippet=snippet,
+                score=40.0 + float(fact["match_score"]),
+            )
+
         if fts_query != '""':
             try:
                 rows = conn.execute(
@@ -430,6 +449,8 @@ def build_answer_prompt(query: str, evidence: list[Evidence], strict: bool = Fal
     rules = [
             "You are ThoughtVault, a local-first personal knowledge and memory assistant.",
             "Answer using only facts explicitly present in the provided evidence.",
+            "Evidence marked fact:confirmed has been reviewed and takes priority over proposed or raw extraction.",
+            "If confirmed facts disagree, report the conflict and do not silently choose one value.",
             "Treat dates, months, names, places, and amounts as strict constraints.",
             "Never copy a value from a different date or month to fill a missing answer.",
             "For comparisons, read every relevant value, calculate the difference, and state the calculation.",
@@ -574,7 +595,7 @@ def _month_totals(evidence: list[Evidence]) -> dict[int, tuple[int, str]]:
             if not total_match:
                 continue
             amount = int(total_match.group(1).replace(",", ""))
-            candidates.setdefault(month, {})[amount] = item.source_id
+            candidates.setdefault(month, {}).setdefault(amount, item.source_id)
     return {
         month: (next(iter(values)), next(iter(values.values())))
         for month, values in candidates.items()
@@ -724,6 +745,30 @@ def answer_question(
         result = {"answer": answer, "evidence": evidence, "status": "evidence_only"}
         if save:
             result["record_id"] = save_ask_record(query, answer, evidence, "none", "evidence_only", db_path)
+        return result
+
+    fact_conflicts = search_confirmed_fact_conflicts(query, db_path)
+    if fact_conflicts:
+        lines = ["已确认事实之间存在冲突，无法可靠选择一个值："]
+        for conflict in fact_conflicts:
+            values = "；".join(
+                f"{item['object_value']}（{item['path']}）"
+                for item in conflict["values"]
+            )
+            lines.append(
+                f"- {conflict['subject']} / {conflict['predicate']}：{values}"
+            )
+        answer = "\n".join(lines)
+        result = {
+            "answer": answer,
+            "evidence": evidence,
+            "answer_mode": "fact_conflict",
+            "status": "fact_conflict",
+        }
+        if save:
+            result["record_id"] = save_ask_record(
+                query, answer, evidence, "deterministic", "fact_conflict", db_path
+            )
         return result
 
     numeric_answer = verified_numeric_answer(query, evidence)
