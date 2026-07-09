@@ -14,7 +14,14 @@ from .embeddings import (
 )
 from .evaluation import run_evaluation
 from .exporter import export_markdown
-from .facts import build_facts, list_fact_conflicts, list_facts, review_fact
+from .facts import (
+    build_facts,
+    fact_status,
+    list_fact_conflicts,
+    list_facts,
+    review_fact,
+    review_facts,
+)
 from .ask import (
     DEFAULT_EVIDENCE_LIMIT,
     answer_question,
@@ -206,12 +213,33 @@ def build_parser() -> argparse.ArgumentParser:
     )
     facts_conflicts.add_argument("--limit", type=int, default=50)
 
+    facts_subparsers.add_parser("status", help="Show fact counts by review status and type.")
+
     facts_review = facts_subparsers.add_parser(
         "review",
         help="Change a fact review status.",
     )
     facts_review.add_argument("fact_id", type=int)
     facts_review.add_argument("status", choices=["proposed", "confirmed", "rejected"])
+
+    facts_review_many = facts_subparsers.add_parser(
+        "review-many",
+        help="Preview or apply a filtered batch fact review.",
+    )
+    facts_review_many.add_argument("status", choices=["confirmed", "rejected"])
+    facts_review_many.add_argument(
+        "--from-status",
+        choices=["proposed", "confirmed", "rejected"],
+        default="proposed",
+    )
+    facts_review_many.add_argument("--type", dest="fact_type", default=None)
+    facts_review_many.add_argument("--query", default=None)
+    facts_review_many.add_argument("--limit", type=int, default=100)
+    facts_review_many.add_argument(
+        "--apply",
+        action="store_true",
+        help="Apply updates. Without this flag the command is preview-only.",
+    )
 
     recall_parser = subparsers.add_parser("recall", help="Recall past exposure with source-backed evidence.")
     recall_parser.add_argument("query", help="Recall query.")
@@ -565,12 +593,38 @@ def main(argv: list[str] | None = None) -> None:
                 ],
             )
             return
+        if args.facts_command == "status":
+            rows = fact_status(args.db)
+            print_rows(rows, ["status", "fact_type", "fact_count"])
+            return
         if args.facts_command == "review":
             row = review_fact(args.fact_id, args.status, args.db)
             if row is None:
                 print("No fact found.")
             else:
                 print_rows([row], ["id", "fact_type", "subject", "predicate", "object_value", "status"])
+            return
+        if args.facts_command == "review-many":
+            summary = review_facts(
+                args.status,
+                args.db,
+                from_status=args.from_status,
+                fact_type=args.fact_type,
+                query=args.query,
+                limit=args.limit,
+                apply=args.apply,
+            )
+            mode = "applied" if summary.applied else "preview"
+            print(
+                f"Batch review {mode}: matched={summary.matched} "
+                f"updated={summary.updated} target_status={summary.target_status}"
+            )
+            print_rows(
+                list(summary.facts),
+                ["id", "fact_type", "subject", "predicate", "object_value", "status", "path"],
+            )
+            if not summary.applied and summary.matched:
+                print("No changes written. Re-run with --apply to update these facts.")
             return
 
     if args.command == "recall":

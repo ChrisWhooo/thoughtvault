@@ -73,6 +73,15 @@ class FactBuildSummary:
     errors: int
 
 
+@dataclass(frozen=True)
+class FactReviewSummary:
+    matched: int
+    updated: int
+    target_status: str
+    applied: bool
+    facts: tuple[dict[str, object], ...]
+
+
 def _normalize_date(match: re.Match[str]) -> str:
     year, month, day = match.groups()
     if day:
@@ -597,6 +606,23 @@ def list_fact_conflicts(
         conn.close()
 
 
+def fact_status(db_path: str | None = None) -> list[dict[str, object]]:
+    init_db(db_path)
+    conn = connect(db_path)
+    try:
+        rows = conn.execute(
+            """
+            SELECT status, fact_type, COUNT(*) AS fact_count
+            FROM facts
+            GROUP BY status, fact_type
+            ORDER BY status, fact_type
+            """
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
 def review_fact(
     fact_id: int,
     status: str,
@@ -620,3 +646,50 @@ def review_fact(
         return dict(row) if row else None
     finally:
         conn.close()
+
+
+def review_facts(
+    status: str,
+    db_path: str | None = None,
+    from_status: str = "proposed",
+    fact_type: str | None = None,
+    query: str | None = None,
+    limit: int = 100,
+    apply: bool = False,
+) -> FactReviewSummary:
+    if status not in VALID_FACT_STATUSES:
+        raise ValueError(f"Unsupported fact status: {status}")
+    if from_status not in VALID_FACT_STATUSES:
+        raise ValueError(f"Unsupported source fact status: {from_status}")
+    matches = list_facts(
+        db_path,
+        limit=limit,
+        status=from_status,
+        fact_type=fact_type,
+        query=query,
+    )
+    updated = 0
+    if apply and matches:
+        conn = connect(db_path)
+        try:
+            ids = [int(row["id"]) for row in matches]
+            placeholders = ",".join("?" for _ in ids)
+            cursor = conn.execute(
+                f"""
+                UPDATE facts
+                SET status = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id IN ({placeholders}) AND status = ?
+                """,
+                [status, *ids, from_status],
+            )
+            updated = max(cursor.rowcount, 0)
+            conn.commit()
+        finally:
+            conn.close()
+    return FactReviewSummary(
+        matched=len(matches),
+        updated=updated,
+        target_status=status,
+        applied=apply,
+        facts=tuple(matches),
+    )

@@ -121,11 +121,11 @@ thoughtvault/
 
 ## Current Status
 
-Phase 8 is complete and Phase 9 has started. ThoughtVault now includes incremental local vector indexing, multilingual semantic retrieval through Ollama embeddings, hybrid lexical/semantic evidence ranking, source-backed local AI answers, durable ask history, deterministic handling for selected date, contact, and monthly-total questions, repeatable JSON evaluation suites, and a first reviewable structured-fact layer.
+Phase 9 is complete. ThoughtVault now includes incremental local vector indexing, multilingual semantic retrieval, durable source-backed ask history, a reviewable structured-fact layer, confirmed-fact answer priority, deterministic conflict refusal, safe batch review, Markdown fact export, and repeatable Phase 8/9 evaluation suites.
 
 ## Next Step
 
-The next implementation milestone is expanding structured fact coverage, using confirmed facts during answers, and adding stronger conflict review before long-term memory compilation.
+The next implementation milestone is Phase 10: a local review interface and knowledge compilation workflow for browsing sources, facts, conflicts, ask history, and generated notes.
 
 ## Usage
 
@@ -191,6 +191,7 @@ thoughtvault embeddings status
 thoughtvault ask "What does this knowledge base say about local AI?" --model qwen3:14b
 thoughtvault evaluate .\examples\phase8-evaluation.json
 thoughtvault facts build
+thoughtvault facts status
 thoughtvault facts conflicts
 thoughtvault reference build
 thoughtvault reference list
@@ -431,6 +432,8 @@ Inspect extracted facts and conflicts:
 ```powershell
 thoughtvault facts list --limit 50
 thoughtvault facts list --type amount
+thoughtvault facts list --query "交通费"
+thoughtvault facts status
 thoughtvault facts conflicts
 ```
 
@@ -442,6 +445,21 @@ thoughtvault facts review 2 rejected
 ```
 
 Facts preserve their source document, chunk, original text, normalized value, unit, event date, confidence, extractor version, and review status. Confirmed or rejected status is retained when an unchanged fact is rebuilt.
+
+Preview a filtered batch review, then explicitly apply it:
+
+```powershell
+thoughtvault facts review-many confirmed --type amount --query "交通费"
+thoughtvault facts review-many confirmed --type amount --query "交通费" --apply
+```
+
+The first command is preview-only. `review-many` never writes changes unless `--apply` is present.
+
+Evaluate confirmed-fact retrieval:
+
+```powershell
+thoughtvault evaluate .\examples\phase9-evaluation.json
+```
 
 ### Recall
 
@@ -599,6 +617,8 @@ Vault/
 |-- _Index.md
 |-- Sources/
 |-- References/
+|-- Facts/
+|-- Ask/
 `-- Knowledge/
 ```
 
@@ -608,6 +628,9 @@ The export includes:
 - source notes for indexed documents
 - reference card notes for generated Reference Cards
 - synthesis notes for generated Synthesis Notes
+- ask records and their retrieved evidence
+- confirmed fact pages grouped by subject
+- unresolved fact conflict summary
 - source paths
 - source hashes
 - trace lists
@@ -689,7 +712,7 @@ Phase 8 adds:
 - `thoughtvault evaluate <suite.json>`
 - repeatable source, answer-content, exclusion, and refusal checks
 
-Phase 9 has started with:
+Phase 9 adds:
 
 - `thoughtvault facts build`
 - `thoughtvault facts list`
@@ -703,6 +726,9 @@ Phase 9 has started with:
 - confirmed facts ranked ahead of raw chunks during `ask`
 - rejected facts excluded from answers
 - deterministic refusal when relevant confirmed facts conflict
+- preview-first batch review with explicit `--apply`
+- confirmed fact and conflict Markdown export under `Facts/`
+- Phase 9 evaluation checks for `fact:confirmed` evidence
 
 ## Current Limits
 

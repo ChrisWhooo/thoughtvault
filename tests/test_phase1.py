@@ -24,7 +24,14 @@ from thoughtvault.ask import (
 from thoughtvault.exporter import export_markdown
 from thoughtvault.embeddings import build_embeddings, embedding_status
 from thoughtvault.evaluation import load_evaluation_cases, run_evaluation
-from thoughtvault.facts import build_facts, list_fact_conflicts, list_facts, review_fact
+from thoughtvault.facts import (
+    build_facts,
+    fact_status,
+    list_fact_conflicts,
+    list_facts,
+    review_fact,
+    review_facts,
+)
 from thoughtvault.recall import recall
 from thoughtvault.reference import build_reference_cards, search_reference_cards
 from thoughtvault.search import search
@@ -558,6 +565,7 @@ class Phase1ScanTests(unittest.TestCase):
                                 "id": "known",
                                 "query": "When?",
                                 "expected_paths": ["review.md"],
+                                "expected_evidence_kinds": ["chunk"],
                                 "answer_contains": ["2026-07-16"],
                             },
                             {
@@ -622,6 +630,43 @@ class Phase1ScanTests(unittest.TestCase):
             self.assertEqual(location_conflict["value_count"], 2)
 
             facts = list_facts(str(db_path), fact_type="location")
+            preview = review_facts(
+                "confirmed",
+                str(db_path),
+                fact_type="location",
+                query="东京",
+                apply=False,
+            )
+            self.assertEqual(preview.matched, 1)
+            self.assertEqual(preview.updated, 0)
+            self.assertEqual(
+                next(row for row in facts if row["normalized_value"] == "东京")["status"],
+                "proposed",
+            )
+
+            applied = review_facts(
+                "confirmed",
+                str(db_path),
+                fact_type="location",
+                query="东京",
+                apply=True,
+            )
+            self.assertEqual(applied.updated, 1)
+            status_rows = fact_status(str(db_path))
+            self.assertTrue(
+                any(
+                    row["status"] == "confirmed"
+                    and row["fact_type"] == "location"
+                    and row["fact_count"] == 1
+                    for row in status_rows
+                )
+            )
+            tokyo = next(
+                row for row in list_facts(str(db_path), fact_type="location")
+                if row["normalized_value"] == "东京"
+            )
+            self.assertEqual(tokyo["status"], "confirmed")
+
             osaka = next(row for row in facts if row["normalized_value"] == "大阪")
             reviewed = review_fact(int(osaka["id"]), "rejected", str(db_path))
             self.assertEqual(reviewed["status"], "rejected")
@@ -652,6 +697,19 @@ class Phase1ScanTests(unittest.TestCase):
             self.assertEqual(total["subject"], "2026-05")
             self.assertEqual(total["normalized_value"], "2580")
             self.assertEqual(total["unit"], "JPY")
+
+            review_fact(int(total["id"]), "confirmed", str(db_path))
+            output = root / "Vault"
+            export_markdown(output, str(db_path))
+            fact_pages = [
+                path for path in (output / "Facts").glob("*.md")
+                if path.name != "_Conflicts.md"
+            ]
+            self.assertEqual(len(fact_pages), 1)
+            fact_text = fact_pages[0].read_text(encoding="utf-8")
+            self.assertIn("transport_total", fact_text)
+            self.assertIn("2,580", fact_text)
+            self.assertTrue((output / "Facts" / "_Conflicts.md").exists())
 
     def test_ask_prioritizes_confirmed_facts_and_refuses_confirmed_conflicts(self) -> None:
         with TemporaryDirectory() as tmp:

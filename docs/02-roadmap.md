@@ -203,7 +203,7 @@ Exit criteria:
 - unsupported answers degrade to evidence-only output
 - automated retrieval and answer checks pass against a fixed evaluation suite
 
-## Phase 9: Structured Facts And Conflict Detection (In Progress)
+## Phase 9: Structured Facts And Conflict Detection (Complete)
 
 Goal: turn retrieved text into reviewable facts without losing source provenance.
 

@@ -125,6 +125,49 @@ def export_markdown(
             ORDER BY id DESC
             """
         ).fetchall()
+        confirmed_facts = conn.execute(
+            """
+            SELECT facts.id, facts.fact_type, facts.subject, facts.predicate,
+                   facts.object_value, facts.normalized_value, facts.unit,
+                   facts.event_date, facts.confidence, facts.status,
+                   facts.source_text, documents.id AS document_id,
+                   documents.path AS source_path, documents.title AS source_title,
+                   source_roots.name AS source
+            FROM facts
+            JOIN documents ON documents.id = facts.document_id
+            JOIN source_roots ON source_roots.id = documents.source_id
+            WHERE facts.status = 'confirmed'
+              AND documents.document_status != 'deleted'
+            ORDER BY facts.subject, facts.predicate, facts.event_date, facts.id
+            """
+        ).fetchall()
+        fact_conflicts = conn.execute(
+            """
+            SELECT facts.fact_type, facts.subject, facts.predicate,
+                   COALESCE(facts.event_date, '') AS event_date,
+                   COALESCE(facts.unit, '') AS unit,
+                   COUNT(DISTINCT facts.normalized_value) AS value_count,
+                   GROUP_CONCAT(DISTINCT facts.object_value) AS values_text,
+                   GROUP_CONCAT(DISTINCT documents.path) AS paths
+            FROM facts
+            JOIN documents ON documents.id = facts.document_id
+            WHERE facts.status != 'rejected'
+              AND facts.fact_type NOT IN ('person', 'decision')
+              AND facts.predicate != 'participant'
+            GROUP BY facts.fact_type, facts.subject, facts.predicate,
+                     COALESCE(facts.event_date, ''), COALESCE(facts.unit, '')
+            HAVING COUNT(DISTINCT facts.normalized_value) > 1
+            ORDER BY value_count DESC, facts.subject, facts.predicate
+            """
+        ).fetchall()
+
+        facts_by_subject: dict[str, list[object]] = {}
+        for fact in confirmed_facts:
+            facts_by_subject.setdefault(str(fact["subject"]), []).append(fact)
+        fact_pages = {
+            subject: f"{int(rows[0]['id'])}-{slugify(subject, 'facts')}.md"
+            for subject, rows in facts_by_subject.items()
+        }
 
         index_lines = [
             frontmatter({"type": "index", "generated_by": "thoughtvault"}),
@@ -154,6 +197,20 @@ def export_markdown(
         for record in ask_records:
             note_name = f"{record['id']}-{slugify(record['query'])}.md"
             index_lines.append(f"- [[Ask/{note_name[:-3]}|{record['query']}]]")
+        index_lines.extend(["", "## Confirmed Facts", ""])
+        if fact_pages:
+            for subject, note_name in fact_pages.items():
+                index_lines.append(f"- [[Facts/{note_name[:-3]}|{subject}]]")
+        else:
+            index_lines.append("- No confirmed facts.")
+        index_lines.extend(
+            [
+                "",
+                "## Fact Conflicts",
+                "",
+                "- [[Facts/_Conflicts|Review detected fact conflicts]]",
+            ]
+        )
 
         if write_text(output / "_Index.md", "\n".join(index_lines) + "\n", overwrite):
             written += 1
@@ -332,6 +389,84 @@ def export_markdown(
                 written += 1
             else:
                 skipped += 1
+
+        for subject, facts in facts_by_subject.items():
+            lines = [
+                frontmatter(
+                    {
+                        "type": "confirmed_facts",
+                        "generated_by": "thoughtvault",
+                        "subject": subject,
+                        "status": "confirmed",
+                    }
+                ),
+                "",
+                f"# {subject}",
+                "",
+                "## Confirmed Facts",
+                "",
+            ]
+            for fact in facts:
+                details = []
+                if fact["event_date"]:
+                    details.append(f"date `{fact['event_date']}`")
+                if fact["unit"]:
+                    details.append(f"unit `{fact['unit']}`")
+                details.append(f"confidence `{float(fact['confidence']):.2f}`")
+                source_note = f"{fact['document_id']}-{slugify(fact['source_title'])}"
+                lines.extend(
+                    [
+                        f"### {fact['predicate']}",
+                        "",
+                        f"- Value: {fact['object_value']}",
+                        f"- Normalized: `{fact['normalized_value']}`",
+                        f"- Metadata: {', '.join(details)}",
+                        f"- Source: [[Sources/{source_note}|{fact['source_path']}]]",
+                        f"- Evidence: {fact['source_text']}",
+                        "",
+                    ]
+                )
+            path = output / "Facts" / fact_pages[subject]
+            if write_text(path, "\n".join(lines).rstrip() + "\n", overwrite):
+                written += 1
+            else:
+                skipped += 1
+
+        conflict_lines = [
+            frontmatter(
+                {
+                    "type": "fact_conflicts",
+                    "generated_by": "thoughtvault",
+                    "count": len(fact_conflicts),
+                }
+            ),
+            "",
+            "# Fact Conflicts",
+            "",
+        ]
+        if fact_conflicts:
+            for conflict in fact_conflicts:
+                conflict_lines.extend(
+                    [
+                        f"## {conflict['subject']} / {conflict['predicate']}",
+                        "",
+                        f"- Values: {conflict['values_text']}",
+                        f"- Date: {conflict['event_date'] or 'unspecified'}",
+                        f"- Unit: {conflict['unit'] or 'none'}",
+                        f"- Sources: {conflict['paths']}",
+                        "",
+                    ]
+                )
+        else:
+            conflict_lines.append("No unresolved fact conflicts.")
+        if write_text(
+            output / "Facts" / "_Conflicts.md",
+            "\n".join(conflict_lines).rstrip() + "\n",
+            overwrite,
+        ):
+            written += 1
+        else:
+            skipped += 1
     finally:
         conn.close()
 

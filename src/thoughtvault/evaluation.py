@@ -29,6 +29,7 @@ class EvaluationCase:
     case_id: str
     query: str
     expected_paths: tuple[str, ...] = ()
+    expected_evidence_kinds: tuple[str, ...] = ()
     answer_contains: tuple[str, ...] = ()
     answer_not_contains: tuple[str, ...] = ()
     expect_refusal: bool = False
@@ -67,6 +68,9 @@ def load_evaluation_cases(path: str | Path) -> list[EvaluationCase]:
                 case_id=str(raw.get("id") or f"case-{index}"),
                 query=str(raw["query"]).strip(),
                 expected_paths=tuple(str(value) for value in raw.get("expected_paths", [])),
+                expected_evidence_kinds=tuple(
+                    str(value) for value in raw.get("expected_evidence_kinds", [])
+                ),
                 answer_contains=tuple(str(value) for value in raw.get("answer_contains", [])),
                 answer_not_contains=tuple(str(value) for value in raw.get("answer_not_contains", [])),
                 expect_refusal=bool(raw.get("expect_refusal", False)),
@@ -80,12 +84,18 @@ def _evaluate_case(case: EvaluationCase, result: dict[str, object]) -> Evaluatio
     lowered_answer = answer.lower()
     evidence = result.get("evidence") or []
     source_paths = tuple(dict.fromkeys(str(item.path) for item in evidence))
+    evidence_kinds = tuple(dict.fromkeys(str(item.kind) for item in evidence))
     checks = []
     passed = True
 
     for expected_path in case.expected_paths:
         matched = any(expected_path.lower() in path.lower() for path in source_paths)
         checks.append(f"{'PASS' if matched else 'FAIL'} source:{expected_path}")
+        passed = passed and matched
+
+    for expected_kind in case.expected_evidence_kinds:
+        matched = expected_kind in evidence_kinds
+        checks.append(f"{'PASS' if matched else 'FAIL'} evidence_kind:{expected_kind}")
         passed = passed and matched
 
     for term in case.answer_contains:
