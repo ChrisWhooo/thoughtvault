@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 import sys
 import unittest
+import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -10,8 +11,17 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from thoughtvault.scanner import scan
-from thoughtvault.ask import answer_question
+from thoughtvault.ask import (
+    Evidence,
+    answer_question,
+    build_answer_prompt,
+    retrieve_evidence,
+    verified_direct_answer,
+    verified_numeric_answer,
+)
 from thoughtvault.exporter import export_markdown
+from thoughtvault.embeddings import build_embeddings, embedding_status
+from thoughtvault.evaluation import load_evaluation_cases, run_evaluation
 from thoughtvault.recall import recall
 from thoughtvault.reference import build_reference_cards, search_reference_cards
 from thoughtvault.search import search
@@ -319,6 +329,220 @@ class Phase1ScanTests(unittest.TestCase):
             self.assertIn("memory.md", str(result["answer"]))
             self.assertEqual(result["ai_error"], "local model unavailable")
             self.assertTrue(result["evidence"])
+
+    def test_ask_retrieves_cross_language_review_date(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "notes"
+            source.mkdir()
+            (source / "review.md").write_text(
+                "# 検索品質レビュー\n\n"
+                "次回レビューは 2026-07-16 14:00、新宿オフィスで実施する。\n",
+                encoding="utf-8",
+            )
+            (source / "roadmap.md").write_text(
+                "# Roadmap\n\n检索质量稳定后建设 Wiki。\n",
+                encoding="utf-8",
+            )
+            db_path = root / "thoughtvault.sqlite"
+
+            add_source(str(source), ["project"], db_path=str(db_path))
+            scan(str(db_path))
+
+            evidence = retrieve_evidence(
+                "下一次检索质量评审是什么时候？",
+                str(db_path),
+            )
+            self.assertTrue(evidence)
+            self.assertEqual(evidence[0].path, "review.md")
+            self.assertIn("2026-07-16", evidence[0].snippet)
+
+    def test_ask_limits_duplicate_evidence_and_uses_strict_prompt(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "notes"
+            source.mkdir()
+            (source / "may.md").write_text(
+                "# 5月交通费\n\n交通费合计：2,580 日元。\n\n"
+                "## 明细\n\n5月交通费由四次往返组成。\n\n"
+                "## 备注\n\n金额已经确认。\n",
+                encoding="utf-8",
+            )
+            (source / "june.md").write_text(
+                "# 6月交通费\n\n交通费合计：2,460 日元。\n",
+                encoding="utf-8",
+            )
+            db_path = root / "thoughtvault.sqlite"
+
+            add_source(str(source), ["personal"], db_path=str(db_path))
+            scan(str(db_path))
+
+            evidence = retrieve_evidence("5月和6月哪个月交通费更高？", str(db_path), limit=5)
+            self.assertEqual({item.path for item in evidence[:2]}, {"may.md", "june.md"})
+            path_counts = {
+                path: sum(item.path == path for item in evidence)
+                for path in {item.path for item in evidence}
+            }
+            self.assertTrue(all(count <= 2 for count in path_counts.values()))
+
+            prompt = build_answer_prompt("4月交通费是多少？", evidence)
+            self.assertIn("Never copy a value from a different date or month", prompt)
+            self.assertIn("calculate the difference", prompt)
+            self.assertIn("Do not add a Sources or Evidence section", prompt)
+
+    def test_ask_calculates_monthly_totals_without_using_the_model(self) -> None:
+        evidence = [
+            Evidence("S1", "demo", "may.md", "2026 年 5 月", "chunk", "交通费合计：2,580 日元", 10),
+            Evidence("S2", "demo", "june.md", "2026 年 6 月", "chunk", "交通费合计：2,460 日元", 9),
+        ]
+        answer = verified_numeric_answer("5月和6月哪个月交通费更高？", evidence)
+        self.assertEqual(
+            answer,
+            "5 月为 2,580 日元 [S1]，6 月为 2,460 日元 [S2]。"
+            "因此 5 月更高，相差 120 日元。",
+        )
+
+    def test_ask_refuses_to_borrow_total_from_another_month(self) -> None:
+        evidence = [
+            Evidence("S1", "demo", "may.md", "2026 年 5 月", "chunk", "交通费合计：2,580 日元", 10),
+        ]
+        answer = verified_numeric_answer("4月交通费是多少？", evidence)
+        self.assertEqual(
+            answer,
+            "现有本地资料中没有找到 4 月的明确交通费合计，因此无法可靠确认。",
+        )
+
+    def test_ask_returns_explicit_next_datetime_without_model(self) -> None:
+        evidence = [
+            Evidence(
+                "S1",
+                "demo",
+                "review.md",
+                "検索品質レビュー",
+                "chunk",
+                "次回レビューは 2026-07-16 14:00、新宿オフィスで実施する。",
+                10,
+            ),
+        ]
+        answer = verified_direct_answer("下一次评审是什么时候？", evidence)
+        self.assertEqual(answer, "下一次安排是 2026 年 7 月 16 日 14:00 [S1]。")
+
+    def test_ask_refuses_missing_phone_number_in_query_language(self) -> None:
+        evidence = [
+            Evidence("S1", "demo", "meeting.md", "会议", "chunk", "参加者：武汉、田中美咲", 10),
+        ]
+        answer = verified_direct_answer("田中美咲的电话号码是什么？", evidence)
+        self.assertEqual(answer, "现有本地资料中没有找到该电话号码，因此无法确认。")
+
+    def test_embeddings_build_incrementally_and_enable_semantic_retrieval(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "notes"
+            source.mkdir()
+            (source / "review.md").write_text(
+                "# レビュー\n\n検索品質を確認した。\n\n"
+                "## 次回\n\n次回レビューは 2026-07-16 14:00、新宿で実施する。\n",
+                encoding="utf-8",
+            )
+            (source / "unrelated.md").write_text(
+                "# Lunch\n\n昼食はサンドイッチだった。\n",
+                encoding="utf-8",
+            )
+            db_path = root / "thoughtvault.sqlite"
+            add_source(str(source), ["memo"], db_path=str(db_path))
+            scan(str(db_path))
+
+            def fake_embedder(
+                texts: list[str],
+                model: str,
+                host: str,
+                timeout: float,
+            ) -> list[list[float]]:
+                vectors = []
+                for text in texts:
+                    if "# レビュー" in text or "下一次评审" in text:
+                        vectors.append([1.0, 0.0, 0.0])
+                    else:
+                        vectors.append([0.0, 1.0, 0.0])
+                return vectors
+
+            first = build_embeddings(
+                str(db_path),
+                model="test-embedding",
+                batch_size=1,
+                embedder=fake_embedder,
+            )
+            self.assertEqual(first.embedded, 3)
+            self.assertEqual(first.unchanged, 0)
+
+            second = build_embeddings(
+                str(db_path),
+                model="test-embedding",
+                embedder=fake_embedder,
+            )
+            self.assertEqual(second.embedded, 0)
+            self.assertEqual(second.unchanged, 3)
+
+            status = embedding_status(str(db_path), "test-embedding")
+            self.assertEqual(status["embedded_chunks"], 3)
+            self.assertEqual(status["dimensions"], 3)
+
+            evidence = retrieve_evidence(
+                "下一次评审是什么时候？",
+                str(db_path),
+                limit=2,
+                embedding_model="test-embedding",
+                embedder=fake_embedder,
+            )
+            self.assertTrue(evidence)
+            self.assertTrue(
+                any(
+                    item.path == "review.md" and "2026-07-16" in item.snippet
+                    for item in evidence
+                )
+            )
+
+    def test_evaluation_suite_checks_sources_answers_and_refusals(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            suite = root / "evaluation.json"
+            suite.write_text(
+                json.dumps(
+                    {
+                        "cases": [
+                            {
+                                "id": "known",
+                                "query": "When?",
+                                "expected_paths": ["review.md"],
+                                "answer_contains": ["2026-07-16"],
+                            },
+                            {
+                                "id": "missing",
+                                "query": "Phone?",
+                                "expect_refusal": True,
+                                "answer_not_contains": ["090-0000-0000"],
+                            },
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            evidence = [
+                Evidence("S1", "demo", "review.md", "Review", "chunk", "2026-07-16", 10),
+            ]
+
+            def fake_answerer(query: str, db_path: str | None, **kwargs: object) -> dict[str, object]:
+                if query == "When?":
+                    return {"answer": "The date is 2026-07-16 [S1].", "evidence": evidence}
+                return {"answer": "没有找到该电话号码，因此无法确认。", "evidence": evidence}
+
+            cases = load_evaluation_cases(suite)
+            self.assertEqual(len(cases), 2)
+            summary = run_evaluation(suite, answerer=fake_answerer)
+            self.assertEqual(summary.total, 2)
+            self.assertEqual(summary.passed, 2)
+            self.assertEqual(summary.failed, 0)
 
 
 if __name__ == "__main__":

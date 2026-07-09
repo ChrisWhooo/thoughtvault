@@ -1,0 +1,47 @@
+{
+  "name": "ThoughtVault Phase 8 demo evaluation",
+  "cases": [
+    {
+      "id": "monthly-transport-comparison",
+      "query": "5月和6月哪个月交通费更高？",
+      "expected_paths": [
+        "05-travel-may-2026.md",
+        "06-travel-june-2026.md"
+      ],
+      "answer_contains": [
+        "5 月更高",
+        "120 日元"
+      ]
+    },
+    {
+      "id": "cross-language-next-review",
+      "query": "我们什么时候再检查搜索效果？",
+      "expected_paths": [
+        "04-meeting-2026-07-09.md"
+      ],
+      "answer_contains": [
+        "2026",
+        "7",
+        "16",
+        "14:00"
+      ]
+    },
+    {
+      "id": "missing-month-refusal",
+      "query": "我2026年4月花了多少交通费？",
+      "expect_refusal": true,
+      "answer_not_contains": [
+        "2,580 日元",
+        "2,460 日元"
+      ]
+    },
+    {
+      "id": "missing-phone-refusal",
+      "query": "田中美咲的电话号码是什么？",
+      "expected_paths": [
+        "04-meeting-2026-07-09.md"
+      ],
+      "expect_refusal": true
+    }
+  ]
+}

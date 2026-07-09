@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
 from .db import init_db
+from .embeddings import (
+    DEFAULT_EMBEDDING_MODEL,
+    build_embeddings,
+    embedding_status,
+)
+from .evaluation import run_evaluation
 from .exporter import export_markdown
-from .ask import answer_question
+from .ask import DEFAULT_EVIDENCE_LIMIT, answer_question
 from .recall import recall
 from .reference import build_reference_cards, list_reference_cards, search_reference_cards
 from .scanner import list_documents, scan
@@ -65,6 +72,41 @@ def build_parser() -> argparse.ArgumentParser:
     search_parser.add_argument("query", help="Search query.")
     search_parser.add_argument("--limit", type=int, default=10, help="Maximum results to show.")
 
+    embeddings_parser = subparsers.add_parser(
+        "embeddings",
+        help="Build and inspect semantic vector indexes.",
+    )
+    embeddings_subparsers = embeddings_parser.add_subparsers(
+        dest="embeddings_command",
+        required=True,
+    )
+    embeddings_build = embeddings_subparsers.add_parser(
+        "build",
+        help="Generate missing or changed chunk embeddings.",
+    )
+    embeddings_build.add_argument(
+        "--model",
+        default=DEFAULT_EMBEDDING_MODEL,
+        help=f"Ollama embedding model. Defaults to {DEFAULT_EMBEDDING_MODEL}.",
+    )
+    embeddings_build.add_argument(
+        "--ollama-host",
+        default=DEFAULT_OLLAMA_HOST,
+        help=f"Ollama host URL. Defaults to {DEFAULT_OLLAMA_HOST}.",
+    )
+    embeddings_build.add_argument("--timeout", type=float, default=120.0)
+    embeddings_build.add_argument("--batch-size", type=int, default=16)
+
+    embeddings_status = embeddings_subparsers.add_parser(
+        "status",
+        help="Show semantic index coverage.",
+    )
+    embeddings_status.add_argument(
+        "--model",
+        default=DEFAULT_EMBEDDING_MODEL,
+        help=f"Ollama embedding model. Defaults to {DEFAULT_EMBEDDING_MODEL}.",
+    )
+
     ask_parser = subparsers.add_parser("ask", help="Ask a source-backed local AI question.")
     ask_parser.add_argument("query", help="Question to answer from indexed local knowledge.")
     ask_parser.add_argument(
@@ -78,8 +120,53 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"Ollama host URL. Defaults to {DEFAULT_OLLAMA_HOST}.",
     )
     ask_parser.add_argument("--timeout", type=float, default=120.0, help="Ollama request timeout in seconds.")
-    ask_parser.add_argument("--limit", type=int, default=8, help="Maximum evidence items to retrieve.")
+    ask_parser.add_argument(
+        "--limit",
+        type=int,
+        default=DEFAULT_EVIDENCE_LIMIT,
+        help="Maximum evidence items to retrieve.",
+    )
     ask_parser.add_argument("--no-ai", action="store_true", help="Show retrieved evidence without AI generation.")
+    ask_parser.add_argument(
+        "--embedding-model",
+        default=DEFAULT_EMBEDDING_MODEL,
+        help=f"Semantic retrieval model. Defaults to {DEFAULT_EMBEDDING_MODEL}.",
+    )
+    ask_parser.add_argument(
+        "--no-semantic",
+        action="store_true",
+        help="Disable semantic retrieval and use lexical evidence only.",
+    )
+    ask_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Show all retrieved evidence instead of only cited sources.",
+    )
+
+    evaluate_parser = subparsers.add_parser(
+        "evaluate",
+        help="Run a repeatable JSON evaluation suite.",
+    )
+    evaluate_parser.add_argument("suite", help="Path to an evaluation JSON file.")
+    evaluate_parser.add_argument(
+        "--model",
+        default=DEFAULT_OLLAMA_MODEL,
+        help=f"Ollama answer model. Defaults to {DEFAULT_OLLAMA_MODEL}.",
+    )
+    evaluate_parser.add_argument(
+        "--embedding-model",
+        default=DEFAULT_EMBEDDING_MODEL,
+        help=f"Semantic retrieval model. Defaults to {DEFAULT_EMBEDDING_MODEL}.",
+    )
+    evaluate_parser.add_argument(
+        "--ollama-host",
+        default=DEFAULT_OLLAMA_HOST,
+        help=f"Ollama host URL. Defaults to {DEFAULT_OLLAMA_HOST}.",
+    )
+    evaluate_parser.add_argument("--timeout", type=float, default=120.0)
+    evaluate_parser.add_argument("--limit", type=int, default=DEFAULT_EVIDENCE_LIMIT)
+    evaluate_parser.add_argument("--no-ai", action="store_true")
+    evaluate_parser.add_argument("--no-semantic", action="store_true")
 
     recall_parser = subparsers.add_parser("recall", help="Recall past exposure with source-backed evidence.")
     recall_parser.add_argument("query", help="Recall query.")
@@ -185,14 +272,27 @@ def print_recall_results(rows: list[dict[str, object]]) -> None:
         print()
 
 
-def print_ask_evidence(evidence: object) -> None:
+def print_ask_evidence(evidence: object, answer: str = "", verbose: bool = False) -> None:
     if not evidence:
         return
+    cited_ids = set(re.findall(r"\[(S\d+)\]", answer))
+    selected = list(evidence) if verbose else [item for item in evidence if item.source_id in cited_ids]
+    if not selected:
+        selected = list(evidence)[:3]
+    unique_selected = []
+    seen_paths = set()
+    for item in selected:
+        if item.path in seen_paths:
+            continue
+        unique_selected.append(item)
+        seen_paths.add(item.path)
     print()
-    print("Evidence:")
-    for item in evidence:
-        snippet = " ".join(str(item.snippet).split())
-        print(f"- [{item.source_id}] {item.path} ({item.kind}): {snippet}")
+    print("Sources:")
+    for item in unique_selected:
+        print(f"- [{item.source_id}] {item.path}")
+        if verbose:
+            snippet = " ".join(str(item.snippet).split())
+            print(f"  {snippet}")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -253,6 +353,29 @@ def main(argv: list[str] | None = None) -> None:
         print_rows(rows, ["result_type", "path", "title", "snippet"])
         return
 
+    if args.command == "embeddings":
+        if args.embeddings_command == "build":
+            summary = build_embeddings(
+                args.db,
+                model=args.model,
+                ollama_host=args.ollama_host,
+                timeout=args.timeout,
+                batch_size=args.batch_size,
+            )
+            print(
+                "Embedding build complete: "
+                f"model={summary.model} "
+                f"total_chunks={summary.total_chunks} "
+                f"embedded={summary.embedded} "
+                f"unchanged={summary.unchanged} "
+                f"errors={summary.errors}"
+            )
+            return
+        if args.embeddings_command == "status":
+            status = embedding_status(args.db, args.model)
+            print_rows([status], ["model", "total_chunks", "embedded_chunks", "dimensions", "last_updated_at"])
+            return
+
     if args.command == "ask":
         result = answer_question(
             args.query,
@@ -262,10 +385,43 @@ def main(argv: list[str] | None = None) -> None:
             timeout=args.timeout,
             limit=args.limit,
             use_ai=not args.no_ai,
+            embedding_model=None if args.no_semantic else args.embedding_model,
         )
         print(result["answer"])
         if not args.no_ai:
-            print_ask_evidence(result.get("evidence"))
+            print_ask_evidence(
+                result.get("evidence"),
+                str(result["answer"]),
+                verbose=args.verbose,
+            )
+        return
+
+    if args.command == "evaluate":
+        summary = run_evaluation(
+            args.suite,
+            args.db,
+            model=args.model,
+            embedding_model=None if args.no_semantic else args.embedding_model,
+            ollama_host=args.ollama_host,
+            timeout=args.timeout,
+            limit=args.limit,
+            use_ai=not args.no_ai,
+        )
+        for result in summary.results:
+            label = "PASS" if result.passed else "FAIL"
+            print(f"[{label}] {result.case_id}: {result.query}")
+            for check in result.checks:
+                print(f"  - {check}")
+            if not result.passed:
+                print(f"  answer: {' '.join(result.answer.split())}")
+                if result.source_paths:
+                    print(f"  sources: {', '.join(result.source_paths)}")
+        print(
+            "Evaluation complete: "
+            f"total={summary.total} passed={summary.passed} failed={summary.failed}"
+        )
+        if summary.failed:
+            raise SystemExit(1)
         return
 
     if args.command == "recall":
