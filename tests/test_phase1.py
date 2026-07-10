@@ -37,6 +37,8 @@ from thoughtvault.knowledge import (
     discover_topics,
     get_knowledge_page,
     search_knowledge_pages,
+    list_knowledge_pages,
+    review_knowledge_page,
 )
 from thoughtvault.recall import recall
 from thoughtvault.reference import build_reference_cards, search_reference_cards
@@ -835,6 +837,51 @@ class Phase1ScanTests(unittest.TestCase):
             self.assertTrue(any((output / "Wiki").glob("*.md")))
             index = (output / "_Index.md").read_text(encoding="utf-8")
             self.assertIn("Wiki Pages", index)
+
+    def test_knowledge_review_and_rebuild_marks_accepted_page_stale(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "notes"
+            source.mkdir()
+            note = source / "profile.md"
+            note.write_text(
+                "# 人物档案：武汉\n\n- 常驻地：东京\n",
+                encoding="utf-8",
+            )
+            db_path = root / "thoughtvault.sqlite"
+            add_source(str(source), ["personal"], db_path=str(db_path))
+            scan(str(db_path))
+            build_facts(str(db_path))
+            for fact in list_facts(str(db_path)):
+                review_fact(int(fact["id"]), "confirmed", str(db_path))
+
+            pages = build_knowledge_pages(str(db_path), topic="武汉")
+            page_id = int(pages[0]["id"])
+            accepted = review_knowledge_page(page_id, "accepted", str(db_path))
+            self.assertEqual(accepted["status"], "accepted")
+            accepted_page = get_knowledge_page(page_id, str(db_path))
+            original_body = accepted_page["body"]
+
+            note.write_text(
+                "# 人物档案：武汉\n\n- 常驻地：东京\n- 状态：更新后资料\n",
+                encoding="utf-8",
+            )
+            scan(str(db_path))
+            build_facts(str(db_path), force=True)
+            build_knowledge_pages(str(db_path), topic="武汉")
+
+            stale_page = get_knowledge_page(page_id, str(db_path))
+            self.assertEqual(stale_page["status"], "stale")
+            self.assertEqual(stale_page["body"], original_body)
+
+            stale_rows = list_knowledge_pages(str(db_path), status="stale")
+            self.assertEqual(len(stale_rows), 1)
+            accepted_rows = list_knowledge_pages(str(db_path), status="accepted")
+            self.assertEqual(accepted_rows, [])
+
+            search_results = search_knowledge_pages("东京", str(db_path), status="stale")
+            self.assertTrue(search_results)
+            self.assertEqual(search_results[0]["id"], page_id)
 
 
 if __name__ == "__main__":

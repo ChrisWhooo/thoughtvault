@@ -7,6 +7,7 @@ from .db import connect, init_db
 
 KNOWLEDGE_GENERATOR = "knowledge-rule-v1"
 TOPIC_TRACE_TYPES = {"technology", "heading"}
+VALID_KNOWLEDGE_STATUSES = {"generated", "accepted", "rejected", "stale"}
 
 
 def _bullet_list(items: list[str], empty: str = "No source-backed items yet.") -> str:
@@ -238,6 +239,26 @@ def build_knowledge_pages(
             body, document_ids, chunk_ids, fact_ids = build_knowledge_page_body(topic_value, material)
             if not document_ids and not fact_ids:
                 continue
+            existing = conn.execute(
+                """
+                SELECT id, topic, title, status, updated_at
+                FROM knowledge_pages
+                WHERE topic = ?
+                """,
+                (topic_value,),
+            ).fetchone()
+            if existing and existing["status"] == "accepted":
+                row = conn.execute(
+                    """
+                    UPDATE knowledge_pages
+                    SET status = 'stale', updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                    RETURNING id, topic, title, status, updated_at
+                    """,
+                    (existing["id"],),
+                ).fetchone()
+                pages.append(dict(row))
+                continue
             row = conn.execute(
                 """
                 INSERT INTO knowledge_pages (
@@ -252,10 +273,7 @@ def build_knowledge_pages(
                     source_chunk_ids = excluded.source_chunk_ids,
                     source_fact_ids = excluded.source_fact_ids,
                     generator = excluded.generator,
-                    status = CASE
-                        WHEN knowledge_pages.status = 'accepted' THEN 'stale'
-                        ELSE 'generated'
-                    END,
+                    status = 'generated',
                     updated_at = CURRENT_TIMESTAMP
                 RETURNING id, topic, title, status, updated_at
                 """,
@@ -276,18 +294,31 @@ def build_knowledge_pages(
         conn.close()
 
 
-def list_knowledge_pages(db_path: str | None = None, limit: int = 50) -> list[dict[str, object]]:
+def list_knowledge_pages(
+    db_path: str | None = None,
+    limit: int = 50,
+    status: str | None = None,
+) -> list[dict[str, object]]:
+    if status is not None and status not in VALID_KNOWLEDGE_STATUSES:
+        raise ValueError(f"Unsupported knowledge page status: {status}")
     init_db(db_path)
     conn = connect(db_path)
     try:
+        params: list[object] = []
+        where = ""
+        if status is not None:
+            where = "WHERE status = ?"
+            params.append(status)
+        params.append(limit)
         rows = conn.execute(
-            """
+            f"""
             SELECT id, topic, title, status, generator, updated_at
             FROM knowledge_pages
+            {where}
             ORDER BY updated_at DESC, id DESC
             LIMIT ?
             """,
-            (limit,),
+            params,
         ).fetchall()
         return [dict(row) for row in rows]
     finally:
@@ -312,17 +343,56 @@ def get_knowledge_page(page_id: int, db_path: str | None = None) -> dict[str, ob
         conn.close()
 
 
-def search_knowledge_pages(query: str, db_path: str | None = None, limit: int = 10) -> list[dict[str, object]]:
+def review_knowledge_page(
+    page_id: int,
+    status: str,
+    db_path: str | None = None,
+) -> dict[str, object] | None:
+    if status not in VALID_KNOWLEDGE_STATUSES:
+        raise ValueError(f"Unsupported knowledge page status: {status}")
+    init_db(db_path)
+    conn = connect(db_path)
+    try:
+        row = conn.execute(
+            """
+            UPDATE knowledge_pages
+            SET status = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            RETURNING id, topic, title, status, updated_at
+            """,
+            (status, page_id),
+        ).fetchone()
+        conn.commit()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def search_knowledge_pages(
+    query: str,
+    db_path: str | None = None,
+    limit: int = 10,
+    status: str | None = None,
+) -> list[dict[str, object]]:
+    if status is not None and status not in VALID_KNOWLEDGE_STATUSES:
+        raise ValueError(f"Unsupported knowledge page status: {status}")
     init_db(db_path)
     conn = connect(db_path)
     tokens = [token.casefold() for token in query.split() if token.strip()]
     try:
+        params: list[object] = []
+        where = ""
+        if status is not None:
+            where = "WHERE status = ?"
+            params.append(status)
         rows = conn.execute(
-            """
+            f"""
             SELECT id, topic, title, body, status, updated_at
             FROM knowledge_pages
+            {where}
             ORDER BY updated_at DESC, id DESC
-            """
+            """,
+            params,
         ).fetchall()
         results = []
         for row in rows:

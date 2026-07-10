@@ -487,11 +487,14 @@ Inspect generated pages:
 
 ```powershell
 thoughtvault knowledge list
+thoughtvault knowledge list --status generated
 thoughtvault knowledge show 1
+thoughtvault knowledge review 1 accepted
 thoughtvault knowledge search "SQLite"
+thoughtvault knowledge search "SQLite" --status accepted
 ```
 
-Knowledge pages are generated from confirmed facts, traces, and source excerpts. They are marked `generated` and should be reviewed before being treated as durable wiki content.
+Knowledge pages are generated from confirmed facts, traces, and source excerpts. They start as `generated` and should be reviewed before being treated as durable wiki content. Supported review states are `generated`, `accepted`, `rejected`, and `stale`. If an `accepted` page is rebuilt after source changes, ThoughtVault marks it `stale` instead of overwriting the accepted body.
 
 ### Recall
 
@@ -769,9 +772,13 @@ Phase 10 adds:
 - `thoughtvault knowledge discover`
 - `thoughtvault knowledge build`
 - `thoughtvault knowledge list`
+- `thoughtvault knowledge list --status <status>`
 - `thoughtvault knowledge show <id>`
+- `thoughtvault knowledge review <id> <status>`
 - `thoughtvault knowledge search <query>`
+- `thoughtvault knowledge search <query> --status <status>`
 - generated reviewable wiki pages compiled from confirmed facts, traces, and source excerpts
+- stale marking for accepted pages when source-backed material changes
 - Markdown export for generated wiki pages under `Wiki/`
 
 ## Current Limits

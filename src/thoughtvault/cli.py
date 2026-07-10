@@ -27,6 +27,7 @@ from .knowledge import (
     discover_topics,
     get_knowledge_page,
     list_knowledge_pages,
+    review_knowledge_page,
     search_knowledge_pages,
 )
 from .ask import (
@@ -261,14 +262,28 @@ def build_parser() -> argparse.ArgumentParser:
     knowledge_build.add_argument("--topic", default=None, help="Build one topic instead of discovered topics.")
     knowledge_build.add_argument("--limit", type=int, default=20)
 
-    knowledge_subparsers.add_parser("list", help="List generated knowledge pages.")
+    knowledge_list = knowledge_subparsers.add_parser("list", help="List generated knowledge pages.")
+    knowledge_list.add_argument(
+        "--status",
+        choices=["generated", "accepted", "rejected", "stale"],
+        default=None,
+    )
 
     knowledge_show = knowledge_subparsers.add_parser("show", help="Show one generated knowledge page.")
     knowledge_show.add_argument("page_id", type=int)
 
+    knowledge_review = knowledge_subparsers.add_parser("review", help="Change a knowledge page review status.")
+    knowledge_review.add_argument("page_id", type=int)
+    knowledge_review.add_argument("status", choices=["generated", "accepted", "rejected", "stale"])
+
     knowledge_search = knowledge_subparsers.add_parser("search", help="Search generated knowledge pages.")
     knowledge_search.add_argument("query")
     knowledge_search.add_argument("--limit", type=int, default=10)
+    knowledge_search.add_argument(
+        "--status",
+        choices=["generated", "accepted", "rejected", "stale"],
+        default=None,
+    )
 
     recall_parser = subparsers.add_parser("recall", help="Recall past exposure with source-backed evidence.")
     recall_parser.add_argument("query", help="Recall query.")
@@ -668,7 +683,7 @@ def main(argv: list[str] | None = None) -> None:
                 print_rows(rows, ["id", "topic", "title", "status", "updated_at"])
             return
         if args.knowledge_command == "list":
-            rows = list_knowledge_pages(args.db)
+            rows = list_knowledge_pages(args.db, status=args.status)
             print_rows(rows, ["id", "topic", "title", "status", "generator", "updated_at"])
             return
         if args.knowledge_command == "show":
@@ -678,8 +693,15 @@ def main(argv: list[str] | None = None) -> None:
             else:
                 print(row["body"])
             return
+        if args.knowledge_command == "review":
+            row = review_knowledge_page(args.page_id, args.status, args.db)
+            if row is None:
+                print("No knowledge page found.")
+            else:
+                print_rows([row], ["id", "topic", "title", "status", "updated_at"])
+            return
         if args.knowledge_command == "search":
-            rows = search_knowledge_pages(args.query, args.db, args.limit)
+            rows = search_knowledge_pages(args.query, args.db, args.limit, status=args.status)
             print_rows(rows, ["id", "topic", "title", "status", "snippet"])
             return
 

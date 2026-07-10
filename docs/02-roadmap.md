@@ -232,6 +232,8 @@ Features:
 - discover candidate topics from confirmed facts and traces
 - generate knowledge pages with source documents, source chunks, and fact provenance
 - mark generated pages for review before treating them as durable knowledge
+- support review states: generated, accepted, rejected, and stale
+- preserve accepted page bodies and mark them stale when rebuilt after source changes
 - search and inspect generated pages from the CLI
 - export generated pages to Markdown under `Wiki/`
 
@@ -239,6 +241,7 @@ Exit criteria:
 
 - users can generate wiki-style pages without manually opening source files
 - every generated page keeps source provenance
+- accepted pages are not silently overwritten by later builds
 - exported pages can be reviewed in Obsidian or another Markdown tool
 
 ## Phase 11: Local Web UI
