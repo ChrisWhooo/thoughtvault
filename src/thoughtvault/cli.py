@@ -22,6 +22,13 @@ from .facts import (
     review_fact,
     review_facts,
 )
+from .knowledge import (
+    build_knowledge_pages,
+    discover_topics,
+    get_knowledge_page,
+    list_knowledge_pages,
+    search_knowledge_pages,
+)
 from .ask import (
     DEFAULT_EVIDENCE_LIMIT,
     answer_question,
@@ -240,6 +247,28 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Apply updates. Without this flag the command is preview-only.",
     )
+
+    knowledge_parser = subparsers.add_parser(
+        "knowledge",
+        help="Compile and inspect source-backed knowledge pages.",
+    )
+    knowledge_subparsers = knowledge_parser.add_subparsers(dest="knowledge_command", required=True)
+
+    knowledge_discover = knowledge_subparsers.add_parser("discover", help="Discover candidate knowledge topics.")
+    knowledge_discover.add_argument("--limit", type=int, default=20)
+
+    knowledge_build = knowledge_subparsers.add_parser("build", help="Generate reviewable knowledge pages.")
+    knowledge_build.add_argument("--topic", default=None, help="Build one topic instead of discovered topics.")
+    knowledge_build.add_argument("--limit", type=int, default=20)
+
+    knowledge_subparsers.add_parser("list", help="List generated knowledge pages.")
+
+    knowledge_show = knowledge_subparsers.add_parser("show", help="Show one generated knowledge page.")
+    knowledge_show.add_argument("page_id", type=int)
+
+    knowledge_search = knowledge_subparsers.add_parser("search", help="Search generated knowledge pages.")
+    knowledge_search.add_argument("query")
+    knowledge_search.add_argument("--limit", type=int, default=10)
 
     recall_parser = subparsers.add_parser("recall", help="Recall past exposure with source-backed evidence.")
     recall_parser.add_argument("query", help="Recall query.")
@@ -625,6 +654,33 @@ def main(argv: list[str] | None = None) -> None:
             )
             if not summary.applied and summary.matched:
                 print("No changes written. Re-run with --apply to update these facts.")
+            return
+
+    if args.command == "knowledge":
+        if args.knowledge_command == "discover":
+            rows = discover_topics(args.db, args.limit)
+            print_rows(rows, ["topic", "source", "document_count"])
+            return
+        if args.knowledge_command == "build":
+            rows = build_knowledge_pages(args.db, topic=args.topic, limit=args.limit)
+            print(f"Knowledge pages built: {len(rows)}")
+            if rows:
+                print_rows(rows, ["id", "topic", "title", "status", "updated_at"])
+            return
+        if args.knowledge_command == "list":
+            rows = list_knowledge_pages(args.db)
+            print_rows(rows, ["id", "topic", "title", "status", "generator", "updated_at"])
+            return
+        if args.knowledge_command == "show":
+            row = get_knowledge_page(args.page_id, args.db)
+            if row is None:
+                print("No knowledge page found.")
+            else:
+                print(row["body"])
+            return
+        if args.knowledge_command == "search":
+            rows = search_knowledge_pages(args.query, args.db, args.limit)
+            print_rows(rows, ["id", "topic", "title", "status", "snippet"])
             return
 
     if args.command == "recall":

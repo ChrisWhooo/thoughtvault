@@ -32,6 +32,12 @@ from thoughtvault.facts import (
     review_fact,
     review_facts,
 )
+from thoughtvault.knowledge import (
+    build_knowledge_pages,
+    discover_topics,
+    get_knowledge_page,
+    search_knowledge_pages,
+)
 from thoughtvault.recall import recall
 from thoughtvault.reference import build_reference_cards, search_reference_cards
 from thoughtvault.search import search
@@ -789,6 +795,46 @@ class Phase1ScanTests(unittest.TestCase):
         answer = verified_numeric_answer("5月和6月哪个月交通费更高？", evidence)
         self.assertIn("2,580 日元 [S1]", answer)
         self.assertIn("2,460 日元 [S2]", answer)
+
+    def test_knowledge_pages_compile_confirmed_facts_and_export_to_wiki(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "notes"
+            source.mkdir()
+            (source / "profile.md").write_text(
+                "# 人物档案：武汉\n\n"
+                "- 常驻地：东京\n"
+                "- 决定：优先建设本地知识库问答\n",
+                encoding="utf-8",
+            )
+            db_path = root / "thoughtvault.sqlite"
+            output = root / "Vault"
+            add_source(str(source), ["personal"], db_path=str(db_path))
+            scan(str(db_path))
+            build_facts(str(db_path))
+            for fact in list_facts(str(db_path)):
+                review_fact(int(fact["id"]), "confirmed", str(db_path))
+
+            topics = discover_topics(str(db_path))
+            self.assertTrue(any(row["topic"] == "武汉" for row in topics))
+
+            pages = build_knowledge_pages(str(db_path), topic="武汉")
+            self.assertEqual(len(pages), 1)
+            self.assertEqual(pages[0]["status"], "generated")
+
+            page = get_knowledge_page(int(pages[0]["id"]), str(db_path))
+            self.assertIsNotNone(page)
+            self.assertIn("Confirmed Facts", page["body"])
+            self.assertIn("东京", page["body"])
+
+            results = search_knowledge_pages("东京", str(db_path))
+            self.assertTrue(results)
+            self.assertEqual(results[0]["topic"], "武汉")
+
+            export_markdown(output, str(db_path))
+            self.assertTrue(any((output / "Wiki").glob("*.md")))
+            index = (output / "_Index.md").read_text(encoding="utf-8")
+            self.assertIn("Wiki Pages", index)
 
 
 if __name__ == "__main__":

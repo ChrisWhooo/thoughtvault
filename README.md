@@ -121,11 +121,11 @@ thoughtvault/
 
 ## Current Status
 
-Phase 9 is complete. ThoughtVault now includes incremental local vector indexing, multilingual semantic retrieval, durable source-backed ask history, a reviewable structured-fact layer, confirmed-fact answer priority, deterministic conflict refusal, safe batch review, Markdown fact export, and repeatable Phase 8/9 evaluation suites.
+Phase 10 has started. ThoughtVault now includes incremental local vector indexing, multilingual semantic retrieval, durable source-backed ask history, a reviewable structured-fact layer, confirmed-fact answer priority, deterministic conflict refusal, safe batch review, Markdown fact export, repeatable Phase 8/9 evaluation suites, and generated source-backed wiki pages.
 
 ## Next Step
 
-The next implementation milestone is Phase 10: a local review interface and knowledge compilation workflow for browsing sources, facts, conflicts, ask history, and generated notes.
+The next implementation milestone is improving knowledge page quality: topic clustering, page merge/review states, stale detection, and better relationship discovery.
 
 ## Usage
 
@@ -168,6 +168,10 @@ python -m thoughtvault embeddings build
 python -m thoughtvault embeddings status
 python -m thoughtvault ask "What does this knowledge base say about local AI?" --model qwen3:14b
 python -m thoughtvault evaluate .\examples\phase8-evaluation.json
+python -m thoughtvault facts build
+python -m thoughtvault knowledge discover
+python -m thoughtvault knowledge build
+python -m thoughtvault knowledge list
 python -m thoughtvault reference build
 python -m thoughtvault reference list
 python -m thoughtvault synthesis build
@@ -193,6 +197,9 @@ thoughtvault evaluate .\examples\phase8-evaluation.json
 thoughtvault facts build
 thoughtvault facts status
 thoughtvault facts conflicts
+thoughtvault knowledge discover
+thoughtvault knowledge build
+thoughtvault knowledge list
 thoughtvault reference build
 thoughtvault reference list
 thoughtvault synthesis build
@@ -461,6 +468,31 @@ Evaluate confirmed-fact retrieval:
 thoughtvault evaluate .\examples\phase9-evaluation.json
 ```
 
+### Knowledge Pages
+
+Discover candidate topics from traces and confirmed facts:
+
+```powershell
+thoughtvault knowledge discover
+```
+
+Build reviewable source-backed wiki pages:
+
+```powershell
+thoughtvault knowledge build
+thoughtvault knowledge build --topic "FastAPI"
+```
+
+Inspect generated pages:
+
+```powershell
+thoughtvault knowledge list
+thoughtvault knowledge show 1
+thoughtvault knowledge search "SQLite"
+```
+
+Knowledge pages are generated from confirmed facts, traces, and source excerpts. They are marked `generated` and should be reviewed before being treated as durable wiki content.
+
 ### Recall
 
 ```powershell
@@ -619,6 +651,7 @@ Vault/
 |-- References/
 |-- Facts/
 |-- Ask/
+|-- Wiki/
 `-- Knowledge/
 ```
 
@@ -631,6 +664,7 @@ The export includes:
 - ask records and their retrieved evidence
 - confirmed fact pages grouped by subject
 - unresolved fact conflict summary
+- generated wiki pages compiled from facts, traces, and source excerpts
 - source paths
 - source hashes
 - trace lists
@@ -729,6 +763,16 @@ Phase 9 adds:
 - preview-first batch review with explicit `--apply`
 - confirmed fact and conflict Markdown export under `Facts/`
 - Phase 9 evaluation checks for `fact:confirmed` evidence
+
+Phase 10 adds:
+
+- `thoughtvault knowledge discover`
+- `thoughtvault knowledge build`
+- `thoughtvault knowledge list`
+- `thoughtvault knowledge show <id>`
+- `thoughtvault knowledge search <query>`
+- generated reviewable wiki pages compiled from confirmed facts, traces, and source excerpts
+- Markdown export for generated wiki pages under `Wiki/`
 
 ## Current Limits
 

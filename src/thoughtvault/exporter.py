@@ -125,6 +125,14 @@ def export_markdown(
             ORDER BY id DESC
             """
         ).fetchall()
+        knowledge_pages = conn.execute(
+            """
+            SELECT id, topic, title, body, source_document_ids, source_chunk_ids,
+                   source_fact_ids, generator, status, created_at, updated_at
+            FROM knowledge_pages
+            ORDER BY title, id
+            """
+        ).fetchall()
         confirmed_facts = conn.execute(
             """
             SELECT facts.id, facts.fact_type, facts.subject, facts.predicate,
@@ -197,6 +205,13 @@ def export_markdown(
         for record in ask_records:
             note_name = f"{record['id']}-{slugify(record['query'])}.md"
             index_lines.append(f"- [[Ask/{note_name[:-3]}|{record['query']}]]")
+        index_lines.extend(["", "## Wiki Pages", ""])
+        if knowledge_pages:
+            for page in knowledge_pages:
+                note_name = f"{page['id']}-{slugify(page['title'])}.md"
+                index_lines.append(f"- [[Wiki/{note_name[:-3]}|{page['title']}]]")
+        else:
+            index_lines.append("- No generated wiki pages.")
         index_lines.extend(["", "## Confirmed Facts", ""])
         if fact_pages:
             for subject, note_name in fact_pages.items():
@@ -427,6 +442,34 @@ def export_markdown(
                     ]
                 )
             path = output / "Facts" / fact_pages[subject]
+            if write_text(path, "\n".join(lines).rstrip() + "\n", overwrite):
+                written += 1
+            else:
+                skipped += 1
+
+        for page in knowledge_pages:
+            lines = [
+                frontmatter(
+                    {
+                        "type": "knowledge_page",
+                        "generated_by": "thoughtvault",
+                        "topic": page["topic"],
+                        "status": page["status"],
+                        "generator": page["generator"],
+                        "created_at": page["created_at"],
+                        "updated_at": page["updated_at"],
+                    }
+                ),
+                "",
+                page["body"],
+                "",
+                "## Provenance",
+                "",
+                f"- Source document ids: `{page['source_document_ids']}`",
+                f"- Source chunk ids: `{page['source_chunk_ids']}`",
+                f"- Source fact ids: `{page['source_fact_ids']}`",
+            ]
+            path = output / "Wiki" / f"{page['id']}-{slugify(page['title'])}.md"
             if write_text(path, "\n".join(lines).rstrip() + "\n", overwrite):
                 written += 1
             else:

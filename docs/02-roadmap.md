@@ -223,9 +223,27 @@ Exit criteria:
 - conflicting facts are shown rather than silently merged
 - unsupported calculations are refused instead of guessed
 
-## Phase 10: Local Web UI
+## Phase 10: Knowledge Compilation
 
-Goal: make recall, reference lookup, Q&A, and synthesis easier to inspect and review.
+Goal: compile source-backed facts, traces, and excerpts into reviewable wiki-style knowledge pages.
+
+Features:
+
+- discover candidate topics from confirmed facts and traces
+- generate knowledge pages with source documents, source chunks, and fact provenance
+- mark generated pages for review before treating them as durable knowledge
+- search and inspect generated pages from the CLI
+- export generated pages to Markdown under `Wiki/`
+
+Exit criteria:
+
+- users can generate wiki-style pages without manually opening source files
+- every generated page keeps source provenance
+- exported pages can be reviewed in Obsidian or another Markdown tool
+
+## Phase 11: Local Web UI
+
+Goal: make recall, reference lookup, Q&A, facts, knowledge pages, and synthesis easier to inspect and review.
 
 Views:
 
@@ -236,13 +254,15 @@ Views:
 - Reference Mode page
 - Synthesis Mode page
 - Ask history page
+- facts and conflict review page
+- knowledge page review page
 - document detail page
 - review queue
 
 Exit criteria:
 
 - users can browse, search, ask, and review generated outputs without CLI
-- new summaries, cards, answers, and synthesis notes can be accepted or rejected in the UI
+- new facts, summaries, cards, answers, wiki pages, and synthesis notes can be accepted or rejected in the UI
 
 ## Suggested MVP
 

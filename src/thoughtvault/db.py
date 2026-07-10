@@ -187,6 +187,23 @@ CREATE TABLE IF NOT EXISTS fact_build_state (
     extractor_version TEXT NOT NULL,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS knowledge_pages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    topic TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    source_document_ids TEXT NOT NULL,
+    source_chunk_ids TEXT NOT NULL,
+    source_fact_ids TEXT NOT NULL,
+    generator TEXT NOT NULL DEFAULT 'rule-v1',
+    status TEXT NOT NULL DEFAULT 'generated',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_pages_topic ON knowledge_pages(topic);
+CREATE INDEX IF NOT EXISTS idx_knowledge_pages_status ON knowledge_pages(status);
 """
 
 
