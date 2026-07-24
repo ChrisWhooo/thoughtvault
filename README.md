@@ -121,11 +121,11 @@ thoughtvault/
 
 ## Current Status
 
-Phase 10 has started. ThoughtVault now includes incremental local vector indexing, multilingual semantic retrieval, durable source-backed ask history, a reviewable structured-fact layer, confirmed-fact answer priority, deterministic conflict refusal, safe batch review, Markdown fact export, repeatable Phase 8/9 evaluation suites, and generated source-backed wiki pages.
+Phase 10 is complete as a CLI-first validation phase. ThoughtVault now includes incremental local vector indexing, multilingual semantic retrieval, durable source-backed ask history, a reviewable structured-fact layer, confirmed-fact answer priority, deterministic conflict refusal, safe batch review, Markdown fact export, repeatable Phase 8/9 evaluation suites, generated source-backed wiki pages, knowledge page review states, stale detection, weak relationship discovery, and explicit page merging.
 
 ## Next Step
 
-The next implementation milestone is improving knowledge page quality: topic clustering, page merge/review states, stale detection, and better relationship discovery.
+The next implementation milestone is improving retrieval reliability before the UI: stronger hybrid lexical plus semantic ranking, metadata filters, and better query routing. After that, ThoughtVault can add a lightweight memory graph / ontology layer on top of the existing evidence-backed RAG foundation.
 
 ## Usage
 
@@ -494,7 +494,16 @@ thoughtvault knowledge search "SQLite"
 thoughtvault knowledge search "SQLite" --status accepted
 ```
 
-Knowledge pages are generated from confirmed facts, traces, and source excerpts. They start as `generated` and should be reviewed before being treated as durable wiki content. Supported review states are `generated`, `accepted`, `rejected`, and `stale`. If an `accepted` page is rebuilt after source changes, ThoughtVault marks it `stale` instead of overwriting the accepted body.
+Inspect and manage related pages:
+
+```powershell
+thoughtvault knowledge links
+thoughtvault knowledge links --rebuild
+thoughtvault knowledge links --page-id 1
+thoughtvault knowledge merge 1 2
+```
+
+Knowledge pages are generated from confirmed facts, traces, and source excerpts. They start as `generated` and should be reviewed before being treated as durable wiki content. Supported review states are `generated`, `accepted`, `rejected`, and `stale`. If an `accepted` page is rebuilt after source changes, ThoughtVault marks it `stale` instead of overwriting the accepted body. Page links are weak, source-backed relationship hints created from shared documents, chunks, facts, and topic mentions. `knowledge merge <target_id> <source_id>` appends the source page into the target page and marks the source page `rejected`.
 
 ### Recall
 
@@ -777,8 +786,12 @@ Phase 10 adds:
 - `thoughtvault knowledge review <id> <status>`
 - `thoughtvault knowledge search <query>`
 - `thoughtvault knowledge search <query> --status <status>`
+- `thoughtvault knowledge links`
+- `thoughtvault knowledge links --rebuild`
+- `thoughtvault knowledge merge <target_id> <source_id>`
 - generated reviewable wiki pages compiled from confirmed facts, traces, and source excerpts
 - stale marking for accepted pages when source-backed material changes
+- weak relationship discovery and explicit page merge workflow
 - Markdown export for generated wiki pages under `Wiki/`
 
 ## Current Limits

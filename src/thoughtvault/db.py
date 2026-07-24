@@ -204,6 +204,22 @@ CREATE TABLE IF NOT EXISTS knowledge_pages (
 
 CREATE INDEX IF NOT EXISTS idx_knowledge_pages_topic ON knowledge_pages(topic);
 CREATE INDEX IF NOT EXISTS idx_knowledge_pages_status ON knowledge_pages(status);
+
+CREATE TABLE IF NOT EXISTS knowledge_page_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_page_id INTEGER NOT NULL REFERENCES knowledge_pages(id) ON DELETE CASCADE,
+    target_page_id INTEGER NOT NULL REFERENCES knowledge_pages(id) ON DELETE CASCADE,
+    relation_type TEXT NOT NULL,
+    evidence_json TEXT NOT NULL,
+    score REAL NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(source_page_id, target_page_id, relation_type)
+);
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_page_links_source ON knowledge_page_links(source_page_id);
+CREATE INDEX IF NOT EXISTS idx_knowledge_page_links_target ON knowledge_page_links(target_page_id);
+CREATE INDEX IF NOT EXISTS idx_knowledge_page_links_type ON knowledge_page_links(relation_type);
 """
 
 

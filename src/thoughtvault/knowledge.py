@@ -27,6 +27,25 @@ def _topic_title(topic: str) -> str:
     return " ".join(part for part in topic.replace("_", " ").split()) or "Untitled"
 
 
+def _json_id_set(value: object) -> set[int]:
+    if not value:
+        return set()
+    try:
+        parsed = json.loads(str(value))
+    except json.JSONDecodeError:
+        return set()
+    if not isinstance(parsed, list):
+        return set()
+    return {int(item) for item in parsed if isinstance(item, int) or str(item).isdigit()}
+
+
+def _json_id_union(*values: object) -> str:
+    merged: set[int] = set()
+    for value in values:
+        merged.update(_json_id_set(value))
+    return json.dumps(sorted(merged))
+
+
 def discover_topics(db_path: str | None = None, limit: int = 50) -> list[dict[str, object]]:
     init_db(db_path)
     conn = connect(db_path)
@@ -288,8 +307,244 @@ def build_knowledge_pages(
                 ),
             ).fetchone()
             pages.append(dict(row))
+        _rebuild_knowledge_links(conn)
         conn.commit()
         return pages
+    finally:
+        conn.close()
+
+
+def _knowledge_page_rows(conn, page_id: int | None = None) -> list[dict[str, object]]:
+    params: list[object] = []
+    where = "WHERE status != 'rejected'"
+    if page_id is not None:
+        where += " AND id = ?"
+        params.append(page_id)
+    rows = conn.execute(
+        f"""
+        SELECT id, topic, title, body, status,
+               source_document_ids, source_chunk_ids, source_fact_ids
+        FROM knowledge_pages
+        {where}
+        ORDER BY id
+        """,
+        params,
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def _link_evidence(left: dict[str, object], right: dict[str, object]) -> tuple[str, dict[str, object], float]:
+    left_docs = _json_id_set(left["source_document_ids"])
+    right_docs = _json_id_set(right["source_document_ids"])
+    left_chunks = _json_id_set(left["source_chunk_ids"])
+    right_chunks = _json_id_set(right["source_chunk_ids"])
+    left_facts = _json_id_set(left["source_fact_ids"])
+    right_facts = _json_id_set(right["source_fact_ids"])
+
+    shared_documents = sorted(left_docs & right_docs)
+    shared_chunks = sorted(left_chunks & right_chunks)
+    shared_facts = sorted(left_facts & right_facts)
+    left_topic = str(left["topic"]).casefold()
+    right_topic = str(right["topic"]).casefold()
+    left_body = str(left["body"]).casefold()
+    right_body = str(right["body"]).casefold()
+    topic_mentions = []
+    if left_topic and left_topic in right_body:
+        topic_mentions.append(str(left["topic"]))
+    if right_topic and right_topic in left_body:
+        topic_mentions.append(str(right["topic"]))
+
+    score = float(len(shared_documents) + len(shared_chunks) * 2 + len(shared_facts) * 3 + len(topic_mentions))
+    relation_type = "mentions_topic" if topic_mentions and not shared_facts else "shared_evidence"
+    evidence = {
+        "shared_document_ids": shared_documents,
+        "shared_chunk_ids": shared_chunks,
+        "shared_fact_ids": shared_facts,
+        "topic_mentions": topic_mentions,
+    }
+    return relation_type, evidence, score
+
+
+def _upsert_link(
+    conn,
+    source_page_id: int,
+    target_page_id: int,
+    relation_type: str,
+    evidence: dict[str, object],
+    score: float,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO knowledge_page_links (
+            source_page_id, target_page_id, relation_type, evidence_json, score, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(source_page_id, target_page_id, relation_type) DO UPDATE SET
+            evidence_json = excluded.evidence_json,
+            score = excluded.score,
+            updated_at = CURRENT_TIMESTAMP
+        """,
+        (source_page_id, target_page_id, relation_type, json.dumps(evidence), score),
+    )
+
+
+def _rebuild_knowledge_links(conn, page_id: int | None = None, min_score: float = 1.0) -> list[dict[str, object]]:
+    if page_id is None:
+        conn.execute("DELETE FROM knowledge_page_links")
+    else:
+        conn.execute(
+            """
+            DELETE FROM knowledge_page_links
+            WHERE source_page_id = ? OR target_page_id = ?
+            """,
+            (page_id, page_id),
+        )
+
+    pages = _knowledge_page_rows(conn)
+    if page_id is None:
+        pairs = [
+            (left, right)
+            for index, left in enumerate(pages)
+            for right in pages[index + 1:]
+        ]
+    else:
+        selected = next((page for page in pages if int(page["id"]) == page_id), None)
+        pairs = [] if selected is None else [
+            (selected, page)
+            for page in pages
+            if int(page["id"]) != page_id
+        ]
+    for left, right in pairs:
+        relation_type, evidence, score = _link_evidence(left, right)
+        if score < min_score:
+            continue
+        left_id = int(left["id"])
+        right_id = int(right["id"])
+        source_id, target_id = sorted([left_id, right_id])
+        _upsert_link(conn, source_id, target_id, relation_type, evidence, score)
+    params: list[object] = []
+    where = ""
+    if page_id is not None:
+        where = "WHERE links.source_page_id = ? OR links.target_page_id = ?"
+        params.extend([page_id, page_id])
+    rows = conn.execute(
+        f"""
+        SELECT links.id, links.source_page_id, source.topic AS source_topic,
+               links.target_page_id, target.topic AS target_topic,
+               links.relation_type, links.evidence_json, links.score, links.updated_at
+        FROM knowledge_page_links AS links
+        JOIN knowledge_pages AS source ON source.id = links.source_page_id
+        JOIN knowledge_pages AS target ON target.id = links.target_page_id
+        {where}
+        ORDER BY links.score DESC, links.updated_at DESC, links.id DESC
+        """,
+        params,
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def build_knowledge_links(
+    db_path: str | None = None,
+    page_id: int | None = None,
+    min_score: float = 1.0,
+) -> list[dict[str, object]]:
+    init_db(db_path)
+    conn = connect(db_path)
+    try:
+        rows = _rebuild_knowledge_links(conn, page_id=page_id, min_score=min_score)
+        conn.commit()
+        return rows
+    finally:
+        conn.close()
+
+
+def list_knowledge_links(
+    db_path: str | None = None,
+    page_id: int | None = None,
+    limit: int = 50,
+) -> list[dict[str, object]]:
+    init_db(db_path)
+    conn = connect(db_path)
+    try:
+        params: list[object] = []
+        where = ""
+        if page_id is not None:
+            where = "WHERE links.source_page_id = ? OR links.target_page_id = ?"
+            params.extend([page_id, page_id])
+        params.append(limit)
+        rows = conn.execute(
+            f"""
+            SELECT links.id, links.source_page_id, source.topic AS source_topic,
+                   links.target_page_id, target.topic AS target_topic,
+                   links.relation_type, links.evidence_json, links.score, links.updated_at
+            FROM knowledge_page_links AS links
+            JOIN knowledge_pages AS source ON source.id = links.source_page_id
+            JOIN knowledge_pages AS target ON target.id = links.target_page_id
+            {where}
+            ORDER BY links.score DESC, links.updated_at DESC, links.id DESC
+            LIMIT ?
+            """,
+            params,
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def merge_knowledge_pages(
+    target_page_id: int,
+    source_page_id: int,
+    db_path: str | None = None,
+) -> dict[str, object] | None:
+    if target_page_id == source_page_id:
+        raise ValueError("Cannot merge a knowledge page into itself")
+    init_db(db_path)
+    conn = connect(db_path)
+    try:
+        target = get_knowledge_page(target_page_id, db_path)
+        source = get_knowledge_page(source_page_id, db_path)
+        if target is None or source is None:
+            return None
+
+        merged_body = "\n\n".join([
+            str(target["body"]).rstrip(),
+            f"## Merged From: {source['title']}",
+            str(source["body"]).strip(),
+        ])
+        target_status = "stale" if target["status"] in {"accepted", "stale"} else "generated"
+        row = conn.execute(
+            """
+            UPDATE knowledge_pages
+            SET body = ?,
+                source_document_ids = ?,
+                source_chunk_ids = ?,
+                source_fact_ids = ?,
+                status = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            RETURNING id, topic, title, status, updated_at
+            """,
+            (
+                merged_body,
+                _json_id_union(target["source_document_ids"], source["source_document_ids"]),
+                _json_id_union(target["source_chunk_ids"], source["source_chunk_ids"]),
+                _json_id_union(target["source_fact_ids"], source["source_fact_ids"]),
+                target_status,
+                target_page_id,
+            ),
+        ).fetchone()
+        source_row = conn.execute(
+            """
+            UPDATE knowledge_pages
+            SET status = 'rejected', updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            RETURNING id, topic, title, status, updated_at
+            """,
+            (source_page_id,),
+        ).fetchone()
+        _rebuild_knowledge_links(conn)
+        conn.commit()
+        return {"target": dict(row), "source": dict(source_row)}
     finally:
         conn.close()
 

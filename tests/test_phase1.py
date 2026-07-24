@@ -34,12 +34,16 @@ from thoughtvault.facts import (
 )
 from thoughtvault.knowledge import (
     build_knowledge_pages,
+    build_knowledge_links,
     discover_topics,
     get_knowledge_page,
+    list_knowledge_links,
     search_knowledge_pages,
     list_knowledge_pages,
+    merge_knowledge_pages,
     review_knowledge_page,
 )
+from thoughtvault.db import init_db
 from thoughtvault.recall import recall
 from thoughtvault.reference import build_reference_cards, search_reference_cards
 from thoughtvault.search import search
@@ -882,6 +886,77 @@ class Phase1ScanTests(unittest.TestCase):
             search_results = search_knowledge_pages("东京", str(db_path), status="stale")
             self.assertTrue(search_results)
             self.assertEqual(search_results[0]["id"], page_id)
+
+    def test_knowledge_links_and_merge_pages(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db_path = root / "thoughtvault.sqlite"
+            init_db(str(db_path))
+
+            conn = sqlite3.connect(db_path)
+            try:
+                cursor = conn.execute(
+                    """
+                    INSERT INTO knowledge_pages (
+                        topic, title, body, source_document_ids, source_chunk_ids,
+                        source_fact_ids, generator, status
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, 'test', 'generated')
+                    """,
+                    (
+                        "FastAPI",
+                        "FastAPI",
+                        "# FastAPI\n\nUses SQLite for a local project.",
+                        "[1]",
+                        "[10]",
+                        "[100]",
+                    ),
+                )
+                fastapi_id = int(cursor.lastrowid)
+                cursor = conn.execute(
+                    """
+                    INSERT INTO knowledge_pages (
+                        topic, title, body, source_document_ids, source_chunk_ids,
+                        source_fact_ids, generator, status
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, 'test', 'generated')
+                    """,
+                    ("SQLite", "SQLite", "# SQLite\n\nLocal database note.", "[1]", "[11]", "[101]"),
+                )
+                sqlite_id = int(cursor.lastrowid)
+                conn.execute(
+                    """
+                    INSERT INTO knowledge_pages (
+                        topic, title, body, source_document_ids, source_chunk_ids,
+                        source_fact_ids, generator, status
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, 'test', 'generated')
+                    """,
+                    ("Unrelated", "Unrelated", "# Unrelated", "[2]", "[20]", "[200]"),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+            links = build_knowledge_links(str(db_path))
+            self.assertEqual(len(links), 1)
+            self.assertEqual(links[0]["source_page_id"], fastapi_id)
+            self.assertEqual(links[0]["target_page_id"], sqlite_id)
+            self.assertGreaterEqual(float(links[0]["score"]), 1.0)
+
+            filtered_links = build_knowledge_links(str(db_path), page_id=sqlite_id)
+            self.assertEqual(filtered_links[0]["source_page_id"], fastapi_id)
+
+            merged = merge_knowledge_pages(fastapi_id, sqlite_id, str(db_path))
+            self.assertIsNotNone(merged)
+            self.assertEqual(merged["target"]["status"], "generated")
+            self.assertEqual(merged["source"]["status"], "rejected")
+
+            target = get_knowledge_page(fastapi_id, str(db_path))
+            source = get_knowledge_page(sqlite_id, str(db_path))
+            self.assertIn("Merged From: SQLite", target["body"])
+            self.assertEqual(source["status"], "rejected")
+            self.assertEqual(list_knowledge_links(str(db_path)), [])
 
 
 if __name__ == "__main__":

@@ -24,9 +24,12 @@ from .facts import (
 )
 from .knowledge import (
     build_knowledge_pages,
+    build_knowledge_links,
     discover_topics,
     get_knowledge_page,
     list_knowledge_pages,
+    list_knowledge_links,
+    merge_knowledge_pages,
     review_knowledge_page,
     search_knowledge_pages,
 )
@@ -284,6 +287,16 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["generated", "accepted", "rejected", "stale"],
         default=None,
     )
+
+    knowledge_links = knowledge_subparsers.add_parser("links", help="List or rebuild related knowledge page links.")
+    knowledge_links.add_argument("--page-id", type=int, default=None)
+    knowledge_links.add_argument("--limit", type=int, default=50)
+    knowledge_links.add_argument("--min-score", type=float, default=1.0)
+    knowledge_links.add_argument("--rebuild", action="store_true", help="Rebuild links before listing them.")
+
+    knowledge_merge = knowledge_subparsers.add_parser("merge", help="Merge one knowledge page into another.")
+    knowledge_merge.add_argument("target_page_id", type=int)
+    knowledge_merge.add_argument("source_page_id", type=int)
 
     recall_parser = subparsers.add_parser("recall", help="Recall past exposure with source-backed evidence.")
     recall_parser.add_argument("query", help="Recall query.")
@@ -703,6 +716,29 @@ def main(argv: list[str] | None = None) -> None:
         if args.knowledge_command == "search":
             rows = search_knowledge_pages(args.query, args.db, args.limit, status=args.status)
             print_rows(rows, ["id", "topic", "title", "status", "snippet"])
+            return
+        if args.knowledge_command == "links":
+            if args.rebuild:
+                rows = build_knowledge_links(args.db, page_id=args.page_id, min_score=args.min_score)
+            else:
+                rows = list_knowledge_links(args.db, page_id=args.page_id, limit=args.limit)
+            print_rows(
+                rows,
+                [
+                    "id", "source_page_id", "source_topic", "target_page_id",
+                    "target_topic", "relation_type", "score",
+                ],
+            )
+            return
+        if args.knowledge_command == "merge":
+            result = merge_knowledge_pages(args.target_page_id, args.source_page_id, args.db)
+            if result is None:
+                print("Knowledge page merge failed: target or source page not found.")
+            else:
+                print("Knowledge pages merged:")
+                print_rows([result["target"]], ["id", "topic", "title", "status", "updated_at"])
+                print("Merged source page:")
+                print_rows([result["source"]], ["id", "topic", "title", "status", "updated_at"])
             return
 
     if args.command == "recall":

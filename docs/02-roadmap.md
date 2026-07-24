@@ -234,6 +234,8 @@ Features:
 - mark generated pages for review before treating them as durable knowledge
 - support review states: generated, accepted, rejected, and stale
 - preserve accepted page bodies and mark them stale when rebuilt after source changes
+- discover weak source-backed relationships between generated pages
+- explicitly merge duplicate or overlapping pages while preserving review state
 - search and inspect generated pages from the CLI
 - export generated pages to Markdown under `Wiki/`
 
@@ -242,6 +244,8 @@ Exit criteria:
 - users can generate wiki-style pages without manually opening source files
 - every generated page keeps source provenance
 - accepted pages are not silently overwritten by later builds
+- related pages can be inspected before the product has a full ontology layer
+- duplicate or overlapping pages can be merged through an explicit command
 - exported pages can be reviewed in Obsidian or another Markdown tool
 
 ## Phase 11: Local Web UI
