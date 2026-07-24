@@ -97,6 +97,26 @@ def build_parser() -> argparse.ArgumentParser:
     search_parser = subparsers.add_parser("search", help="Search indexed chunks and traces.")
     search_parser.add_argument("query", help="Search query.")
     search_parser.add_argument("--limit", type=int, default=10, help="Maximum results to show.")
+    search_parser.add_argument(
+        "--mode",
+        choices=["lexical", "semantic", "hybrid"],
+        default="lexical",
+        help="Search mode. Defaults to lexical.",
+    )
+    search_parser.add_argument("--category", default=None, help="Only search one source category.")
+    search_parser.add_argument("--source", default=None, help="Only search one source name.")
+    search_parser.add_argument("--path", default=None, help="Only search documents whose path contains this text.")
+    search_parser.add_argument(
+        "--embedding-model",
+        default=DEFAULT_EMBEDDING_MODEL,
+        help=f"Semantic retrieval model. Defaults to {DEFAULT_EMBEDDING_MODEL}.",
+    )
+    search_parser.add_argument(
+        "--ollama-host",
+        default=DEFAULT_OLLAMA_HOST,
+        help=f"Ollama host URL. Defaults to {DEFAULT_OLLAMA_HOST}.",
+    )
+    search_parser.add_argument("--timeout", type=float, default=120.0)
 
     embeddings_parser = subparsers.add_parser(
         "embeddings",
@@ -502,8 +522,19 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     if args.command == "search":
-        rows = search(args.query, args.db, args.limit)
-        print_rows(rows, ["result_type", "path", "title", "snippet"])
+        rows = search(
+            args.query,
+            args.db,
+            args.limit,
+            mode=args.mode,
+            category=args.category,
+            source=args.source,
+            path=args.path,
+            embedding_model=args.embedding_model,
+            ollama_host=args.ollama_host,
+            timeout=args.timeout,
+        )
+        print_rows(rows, ["result_type", "match_mode", "score", "source", "categories", "path", "title", "snippet"])
         return
 
     if args.command == "embeddings":

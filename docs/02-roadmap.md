@@ -248,7 +248,26 @@ Exit criteria:
 - duplicate or overlapping pages can be merged through an explicit command
 - exported pages can be reviewed in Obsidian or another Markdown tool
 
-## Phase 11: Local Web UI
+## Phase 11: Retrieval Reliability
+
+Goal: make recall and search more stable before adding a UI or a heavier memory graph.
+
+Features:
+
+- support lexical, semantic, and hybrid search modes
+- filter search by source category, source name, and document path
+- keep lexical and semantic filters consistent
+- add query routing for fact, recall, knowledge page, and raw evidence questions
+- add evaluation cases for ambiguous natural-language memory questions
+
+Exit criteria:
+
+- users can narrow retrieval without manually opening folders
+- semantic search can be compared against lexical search from the CLI
+- hybrid search produces source-backed results with stable ranking inputs
+- filtered retrieval is covered by repeatable tests
+
+## Phase 12: Local Web UI
 
 Goal: make recall, reference lookup, Q&A, facts, knowledge pages, and synthesis easier to inspect and review.
 

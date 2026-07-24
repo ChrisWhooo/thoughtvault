@@ -121,11 +121,11 @@ thoughtvault/
 
 ## Current Status
 
-Phase 10 is complete as a CLI-first validation phase. ThoughtVault now includes incremental local vector indexing, multilingual semantic retrieval, durable source-backed ask history, a reviewable structured-fact layer, confirmed-fact answer priority, deterministic conflict refusal, safe batch review, Markdown fact export, repeatable Phase 8/9 evaluation suites, generated source-backed wiki pages, knowledge page review states, stale detection, weak relationship discovery, and explicit page merging.
+Phase 11 has started. ThoughtVault now includes incremental local vector indexing, multilingual semantic retrieval, durable source-backed ask history, a reviewable structured-fact layer, confirmed-fact answer priority, deterministic conflict refusal, safe batch review, Markdown fact export, repeatable Phase 8/9 evaluation suites, generated source-backed wiki pages, knowledge page review states, stale detection, weak relationship discovery, explicit page merging, and filtered lexical/semantic/hybrid search.
 
 ## Next Step
 
-The next implementation milestone is improving retrieval reliability before the UI: stronger hybrid lexical plus semantic ranking, metadata filters, and better query routing. After that, ThoughtVault can add a lightweight memory graph / ontology layer on top of the existing evidence-backed RAG foundation.
+The next implementation milestone is continuing retrieval reliability: add query routing, source-aware recall/ask filters, and evaluation cases for ambiguous natural-language questions before starting the local Web UI.
 
 ## Usage
 
@@ -317,7 +317,7 @@ python -m thoughtvault search "SQLite FTS5"
 python -m thoughtvault search "personal memory"
 ```
 
-Search currently checks both:
+Lexical search checks both:
 
 - extracted text chunks
 - extracted traces such as titles, paths, headings, dates, URLs, fields, and common technology names
@@ -326,6 +326,21 @@ Limit result count:
 
 ```powershell
 python -m thoughtvault search "SQLite" --limit 5
+```
+
+Use metadata filters:
+
+```powershell
+python -m thoughtvault search "FastAPI" --category project
+python -m thoughtvault search "FastAPI" --source docs
+python -m thoughtvault search "FastAPI" --path architecture
+```
+
+Use semantic or hybrid search after building embeddings:
+
+```powershell
+python -m thoughtvault search "backend framework" --mode semantic
+python -m thoughtvault search "backend framework" --mode hybrid --category project
 ```
 
 ### Ask With Local AI
@@ -793,6 +808,14 @@ Phase 10 adds:
 - stale marking for accepted pages when source-backed material changes
 - weak relationship discovery and explicit page merge workflow
 - Markdown export for generated wiki pages under `Wiki/`
+
+Phase 11 adds:
+
+- `thoughtvault search <query> --mode lexical|semantic|hybrid`
+- `thoughtvault search <query> --category <category>`
+- `thoughtvault search <query> --source <source-name>`
+- `thoughtvault search <query> --path <path-fragment>`
+- shared metadata filters for lexical and semantic search results
 
 ## Current Limits
 

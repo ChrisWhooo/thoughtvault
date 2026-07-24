@@ -29,6 +29,7 @@ class SemanticMatch:
     chunk_id: int
     source: str
     path: str
+    categories: str
     title: str
     content: str
     score: float
@@ -221,17 +222,38 @@ def semantic_search(
     limit: int = 10,
     min_score: float = 0.25,
     embedder: Embedder = generate_embeddings_with_ollama,
+    category: str | None = None,
+    source: str | None = None,
+    path: str | None = None,
 ) -> list[SemanticMatch]:
     init_db(db_path)
     conn = connect(db_path)
     try:
+        filters = [
+            "chunk_embeddings.model = ?",
+            "chunk_embeddings.content_hash = chunks.content_hash",
+            "documents.document_status != 'deleted'",
+            "documents.extraction_status = 'success'",
+        ]
+        params: list[object] = [model]
+        if category:
+            filters.append("(',' || documents.source_categories || ',') LIKE ?")
+            params.append(f"%,{category.strip().lower()},%")
+        if source:
+            filters.append("source_roots.name = ?")
+            params.append(source)
+        if path:
+            filters.append("documents.path LIKE ?")
+            params.append(f"%{path}%")
+        where = " AND ".join(filters)
         rows = conn.execute(
-            """
+            f"""
             SELECT
                 chunks.id AS chunk_id,
                 chunks.content,
                 source_roots.name AS source,
                 documents.path,
+                documents.source_categories AS categories,
                 documents.title,
                 chunk_embeddings.dimensions,
                 chunk_embeddings.vector
@@ -239,12 +261,9 @@ def semantic_search(
             JOIN chunks ON chunks.id = chunk_embeddings.chunk_id
             JOIN documents ON documents.id = chunks.document_id
             JOIN source_roots ON source_roots.id = documents.source_id
-            WHERE chunk_embeddings.model = ?
-              AND chunk_embeddings.content_hash = chunks.content_hash
-              AND documents.document_status != 'deleted'
-              AND documents.extraction_status = 'success'
+            WHERE {where}
             """,
-            (model,),
+            params,
         ).fetchall()
         if not rows:
             return []
@@ -263,6 +282,7 @@ def semantic_search(
                     chunk_id=int(row["chunk_id"]),
                     source=row["source"],
                     path=row["path"],
+                    categories=row["categories"],
                     title=row["title"],
                     content=row["content"],
                     score=score,

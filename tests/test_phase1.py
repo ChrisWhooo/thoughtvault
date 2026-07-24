@@ -131,6 +131,82 @@ class Phase1ScanTests(unittest.TestCase):
             self.assertTrue(recall_results[0]["evidence"])
             self.assertIn("fastapi", recall_results[0]["technologies"])
 
+    def test_search_filters_by_category_source_and_path(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            project = root / "project"
+            reference = root / "reference"
+            project.mkdir()
+            reference.mkdir()
+            (project / "architecture.md").write_text(
+                "# Architecture\n\nSharedKeyword belongs to the project source.\n",
+                encoding="utf-8",
+            )
+            (reference / "application.md").write_text(
+                "# Application\n\nSharedKeyword belongs to the reference source.\n",
+                encoding="utf-8",
+            )
+            db_path = root / "thoughtvault.sqlite"
+
+            add_source(str(project), ["project"], name="project-docs", db_path=str(db_path))
+            add_source(str(reference), ["reference"], name="reference-docs", db_path=str(db_path))
+            scan(str(db_path))
+
+            project_results = search("SharedKeyword", str(db_path), category="project")
+            self.assertTrue(project_results)
+            self.assertTrue(all(row["categories"] == "project" for row in project_results))
+
+            source_results = search("SharedKeyword", str(db_path), source="reference-docs")
+            self.assertTrue(source_results)
+            self.assertTrue(all(row["source"] == "reference-docs" for row in source_results))
+
+            path_results = search("SharedKeyword", str(db_path), path="architecture")
+            self.assertTrue(path_results)
+            self.assertTrue(all(row["path"] == "architecture.md" for row in path_results))
+
+    def test_search_supports_semantic_and_hybrid_modes_with_filters(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            project = root / "project"
+            reference = root / "reference"
+            project.mkdir()
+            reference.mkdir()
+            (project / "api.md").write_text("# API\n\nFastAPI handles backend routes.\n", encoding="utf-8")
+            (reference / "form.md").write_text("# Form\n\nTravel form reference.\n", encoding="utf-8")
+            db_path = root / "thoughtvault.sqlite"
+
+            add_source(str(project), ["project"], name="project-docs", db_path=str(db_path))
+            add_source(str(reference), ["reference"], name="reference-docs", db_path=str(db_path))
+            scan(str(db_path))
+
+            def fake_embedder(texts: list[str], model: str, host: str, timeout: float) -> list[list[float]]:
+                vectors = []
+                for text in texts:
+                    vectors.append([1.0, 0.0] if "FastAPI" in text or "backend" in text else [0.0, 1.0])
+                return vectors
+
+            build_embeddings(str(db_path), model="test-embedding", embedder=fake_embedder)
+            semantic_results = search(
+                "backend",
+                str(db_path),
+                mode="semantic",
+                category="project",
+                embedding_model="test-embedding",
+                embedder=fake_embedder,
+            )
+            self.assertTrue(semantic_results)
+            self.assertEqual(semantic_results[0]["path"], "api.md")
+
+            hybrid_results = search(
+                "FastAPI backend",
+                str(db_path),
+                mode="hybrid",
+                embedding_model="test-embedding",
+                embedder=fake_embedder,
+            )
+            self.assertTrue(hybrid_results)
+            self.assertIn(hybrid_results[0]["match_mode"], {"hybrid", "semantic", "lexical"})
+
     def test_scan_extracts_excel_workbook_text(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
