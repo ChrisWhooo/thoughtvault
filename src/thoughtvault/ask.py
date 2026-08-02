@@ -19,7 +19,7 @@ from .facts import (
     search_confirmed_facts,
 )
 from .knowledge import search_knowledge_pages
-from .routing import QueryRoute, classify_query
+from .routing import QueryRoute, QueryScope, classify_query, infer_query_scope
 from .search import normalize_query
 from .synthesis import DEFAULT_OLLAMA_HOST, DEFAULT_OLLAMA_MODEL, generate_with_ollama
 
@@ -176,6 +176,69 @@ def _intent_bonus(query: str, text: str) -> float:
     return bonus
 
 
+def _scope_search_terms(scope: QueryScope) -> list[str]:
+    terms: list[str] = []
+    for value in scope.time_scope:
+        if re.fullmatch(r"\d{4}-\d{2}", value):
+            year, month = value.split("-", 1)
+            month_number = int(month)
+            terms.extend(
+                [
+                    value,
+                    f"{year}{month}",
+                    f"{year}_{month}",
+                    f"{year}/{month}",
+                    f"{year}年{month_number}月",
+                    f"{year}年{month}月",
+                    f"{month_number}月",
+                    f"{month}月",
+                ]
+            )
+        elif re.fullmatch(r"\d{2}", value):
+            terms.extend([f"{int(value)}月", f"{value}月"])
+        elif value:
+            terms.append(value)
+
+    document_hint_terms = {
+        "attendance_sheet": ("勤怠表", "勤怠", "出勤表"),
+        "application_form": ("申請書", "申请书", "申请", "form"),
+        "wiki_page": ("wiki", "知识页", "知識ページ"),
+        "project_note": ("项目", "project"),
+    }
+    measure_hint_terms = {
+        "amount": ("金额", "费用", "合计", "总计", "total", "amount"),
+        "transport_cost": ("交通费", "交通費", "移動費", "移动费", "电车费", "電車代"),
+        "date": ("日期", "日付", "date"),
+        "location": ("地点", "場所", "location"),
+        "contact": ("电话", "電話", "phone"),
+        "status": ("状态", "状態", "status"),
+    }
+    for hint in scope.document_hints:
+        terms.extend(document_hint_terms.get(hint, (hint,)))
+    for hint in scope.measure_hints:
+        terms.extend(measure_hint_terms.get(hint, (hint,)))
+    terms.extend(scope.entities)
+    return list(dict.fromkeys(term for term in terms if term))
+
+
+def _scope_bonus(scope: QueryScope, text: str) -> float:
+    if not text:
+        return 0.0
+    haystack = text.casefold()
+    bonus = 0.0
+    for term in _scope_search_terms(scope):
+        lowered = term.casefold()
+        if lowered not in haystack:
+            continue
+        if term in scope.time_scope or re.fullmatch(r"\d{4}[-_/]?\d{2}", lowered):
+            bonus += 8.0
+        elif term in scope.entities:
+            bonus += 4.0
+        else:
+            bonus += 2.0
+    return min(bonus, 18.0)
+
+
 def retrieve_evidence(
     query: str,
     db_path: str | None = None,
@@ -184,8 +247,10 @@ def retrieve_evidence(
     ollama_host: str = DEFAULT_OLLAMA_HOST,
     timeout: float = 120.0,
     embedder: Embedder = generate_embeddings_with_ollama,
+    query_scope: QueryScope | None = None,
 ) -> list[Evidence]:
     init_db(db_path)
+    active_scope = query_scope or infer_query_scope(query)
     fts_query = normalize_query(query)
     conn = connect(db_path)
     evidence: dict[tuple[str, str, str], Evidence] = {}
@@ -201,7 +266,9 @@ def retrieve_evidence(
                 title=str(fact["title"]),
                 kind=kind,
                 snippet=snippet,
-                score=40.0 + float(fact["match_score"]),
+                score=40.0
+                + float(fact["match_score"])
+                + _scope_bonus(active_scope, f"{fact['path']} {fact['title']} {snippet}"),
             )
 
         if fts_query != '""':
@@ -235,7 +302,8 @@ def retrieve_evidence(
                         snippet=_compact(row["snippet"]),
                         score=float(limit - index + 1)
                         + 5.0
-                        + _intent_bonus(query, f"{row['path']} {row['snippet']}"),
+                        + _intent_bonus(query, f"{row['path']} {row['snippet']}")
+                        + _scope_bonus(active_scope, f"{row['path']} {row['title']} {row['snippet']}"),
                     )
             except OperationalError:
                 pass
@@ -274,7 +342,8 @@ def retrieve_evidence(
                         snippet=_compact(snippet),
                         score=float(limit - index + 1)
                         + 4.0
-                        + _intent_bonus(query, f"{row['path']} {snippet}"),
+                        + _intent_bonus(query, f"{row['path']} {snippet}")
+                        + _scope_bonus(active_scope, f"{row['path']} {row['title']} {snippet}"),
                     )
             except OperationalError:
                 pass
@@ -319,6 +388,7 @@ def retrieve_evidence(
                 if query.lower() in haystack:
                     score += 8.0
                 score += _intent_bonus(query, haystack)
+                score += _scope_bonus(active_scope, haystack)
                 if score < 2.5:
                     continue
                 key = (row["path"], "chunk", row["content"])
@@ -351,6 +421,10 @@ def retrieve_evidence(
             for index, match in enumerate(semantic_matches, start=1):
                 key = (match.path, "chunk", match.content)
                 semantic_score = 10.0 + (match.score * 10.0) - (index * 0.05)
+                semantic_score += _scope_bonus(
+                    active_scope,
+                    f"{match.path} {match.title} {match.content}",
+                )
                 existing = evidence.get(key)
                 if existing:
                     semantic_score += min(existing.score, 8.0)
@@ -392,9 +466,13 @@ def retrieve_evidence(
                 ).fetchall()
                 for row in sibling_rows:
                     intent_score = _intent_bonus(query, row["content"])
-                    if intent_score <= 0.0:
+                    scope_score = _scope_bonus(
+                        active_scope,
+                        f"{row['path']} {row['title']} {row['content']}",
+                    )
+                    if intent_score <= 0.0 and scope_score <= 0.0:
                         continue
-                    sibling_score = 9.0 + (document_score * 5.0) + intent_score
+                    sibling_score = 9.0 + (document_score * 5.0) + intent_score + scope_score
                     key = (row["path"], "chunk", row["content"])
                     existing = evidence.get(key)
                     if existing and existing.score >= sibling_score:
@@ -493,6 +571,48 @@ def query_route_to_dict(route: QueryRoute) -> dict[str, object]:
         "confidence": route.confidence,
         "reason": route.reason,
     }
+
+
+def query_scope_to_dict(scope: QueryScope) -> dict[str, object]:
+    return {
+        "time_scope": list(scope.time_scope),
+        "entities": list(scope.entities),
+        "document_hints": list(scope.document_hints),
+        "measure_hints": list(scope.measure_hints),
+        "intent": scope.intent,
+        "ambiguity": scope.ambiguity,
+        "reason": scope.reason,
+    }
+
+
+def _candidate_time_scopes(evidence: list[Evidence]) -> list[str]:
+    scopes = []
+    for item in evidence:
+        if item.kind != "fact:confirmed":
+            continue
+        for value in re.findall(r"\b(20\d{2}-(?:0[1-9]|1[0-2])(?:-\d{2})?)\b", item.snippet):
+            if value not in scopes:
+                scopes.append(value)
+    return sorted(scopes)
+
+
+def ambiguous_scope_answer(scope: QueryScope, evidence: list[Evidence]) -> tuple[str, dict[str, object]] | None:
+    if scope.ambiguity != "missing_time_scope":
+        return None
+    candidate_scopes = _candidate_time_scopes(evidence)
+    if len(candidate_scopes) <= 1:
+        return None
+    labels = "、".join(candidate_scopes)
+    answer = (
+        "这个问题需要先限定月份或日期范围。"
+        f"我在本地资料中找到了多个可能的时间范围：{labels}。"
+        "请指定月份、日期或更具体的对象后再问。"
+    )
+    scope_payload = query_scope_to_dict(scope)
+    scope_payload["candidate_time_scopes"] = candidate_scopes
+    scope_payload["ambiguity"] = "missing_time_scope"
+    scope_payload["reason"] = "multiple local fact time scopes match an underspecified question"
+    return answer, scope_payload
 
 
 def save_ask_record(
@@ -716,23 +836,39 @@ def verified_direct_answer(query: str, evidence: list[Evidence]) -> str | None:
     return None
 
 
-def routed_reference_answer(evidence: list[Evidence], limit: int = 5) -> str | None:
+def _rank_reference_evidence(evidence: list[Evidence]) -> list[Evidence]:
+    return sorted(
+        evidence,
+        key=lambda item: (
+            0 if item.kind == "fact:confirmed" else 1,
+            item.score,
+        ),
+        reverse=True,
+    )
+
+
+def routed_reference_answer(evidence: list[Evidence], limit: int = 5) -> tuple[str, list[Evidence]] | None:
     if not evidence:
         return None
     lines = ["找到这些可能相关的资料位置："]
     seen_paths: set[str] = set()
+    selected: list[Evidence] = []
     count = 0
-    for item in evidence:
+    ranked_evidence = _rank_reference_evidence(evidence)
+    for item in ranked_evidence:
         if item.path in seen_paths:
             continue
         lines.append(f"- [{item.source_id}] {item.path}（source={item.source}）")
         seen_paths.add(item.path)
+        selected.append(item)
         count += 1
         if count >= limit:
             break
     if count == 0:
         return None
-    return "\n".join(lines)
+    selected_paths = {item.path for item in selected}
+    remainder = [item for item in ranked_evidence if item.path not in selected_paths]
+    return "\n".join(lines), [*selected, *remainder]
 
 
 def routed_recall_answer(evidence: list[Evidence], limit: int = 5) -> str | None:
@@ -814,7 +950,9 @@ def answer_question(
     embedder: Embedder = generate_embeddings_with_ollama,
 ) -> dict[str, object]:
     query_route = classify_query(query)
+    query_scope = infer_query_scope(query)
     query_route_payload = query_route_to_dict(query_route)
+    query_scope_payload = query_scope_to_dict(query_scope)
     evidence = retrieve_evidence(
         query,
         db_path,
@@ -823,7 +961,25 @@ def answer_question(
         ollama_host=ollama_host,
         timeout=timeout,
         embedder=embedder,
+        query_scope=query_scope,
     )
+    ambiguous_scope = ambiguous_scope_answer(query_scope, evidence)
+    if ambiguous_scope is not None:
+        answer, scoped_payload = ambiguous_scope
+        result: dict[str, object] = {
+            "answer": answer,
+            "evidence": evidence,
+            "answer_mode": "scope_ambiguous",
+            "status": "scope_ambiguous",
+            "query_route": query_route_payload,
+            "inferred_scope": scoped_payload,
+        }
+        if save:
+            result["record_id"] = save_ask_record(
+                query, answer, evidence, "deterministic", "scope_ambiguous", db_path
+            )
+        return result
+
     if query_route.route == "knowledge":
         knowledge_result = routed_knowledge_answer(query, db_path, evidence, limit=limit)
         if knowledge_result is not None:
@@ -834,6 +990,7 @@ def answer_question(
                 "answer_mode": "routed_knowledge",
                 "status": "routed_knowledge",
                 "query_route": query_route_payload,
+                "inferred_scope": query_scope_payload,
             }
             if save:
                 result["record_id"] = save_ask_record(
@@ -848,6 +1005,7 @@ def answer_question(
             "evidence": [],
             "status": "no_evidence",
             "query_route": query_route_payload,
+            "inferred_scope": query_scope_payload,
         }
         if save:
             result["record_id"] = save_ask_record(query, answer, [], "none", "no_evidence", db_path)
@@ -871,6 +1029,7 @@ def answer_question(
             "answer_mode": "fact_conflict",
             "status": "fact_conflict",
             "query_route": query_route_payload,
+            "inferred_scope": query_scope_payload,
         }
         if save:
             result["record_id"] = save_ask_record(
@@ -886,6 +1045,7 @@ def answer_question(
             "answer_mode": "verified_numeric",
             "status": "verified_numeric",
             "query_route": query_route_payload,
+            "inferred_scope": query_scope_payload,
         }
         if save:
             result["record_id"] = save_ask_record(
@@ -901,6 +1061,7 @@ def answer_question(
             "answer_mode": "verified_direct",
             "status": "verified_direct",
             "query_route": query_route_payload,
+            "inferred_scope": query_scope_payload,
         }
         if save:
             result["record_id"] = save_ask_record(
@@ -909,18 +1070,20 @@ def answer_question(
         return result
 
     if query_route.route == "reference":
-        reference_answer = routed_reference_answer(evidence, limit=limit)
-        if reference_answer is not None:
+        reference_result = routed_reference_answer(evidence, limit=limit)
+        if reference_result is not None:
+            reference_answer, routed_evidence = reference_result
             result = {
                 "answer": reference_answer,
-                "evidence": evidence,
+                "evidence": routed_evidence,
                 "answer_mode": "routed_reference",
                 "status": "routed_reference",
                 "query_route": query_route_payload,
+                "inferred_scope": query_scope_payload,
             }
             if save:
                 result["record_id"] = save_ask_record(
-                    query, reference_answer, evidence, "deterministic", "routed_reference", db_path
+                    query, reference_answer, routed_evidence, "deterministic", "routed_reference", db_path
                 )
             return result
 
@@ -933,6 +1096,7 @@ def answer_question(
                 "answer_mode": "routed_recall",
                 "status": "routed_recall",
                 "query_route": query_route_payload,
+                "inferred_scope": query_scope_payload,
             }
             if save:
                 result["record_id"] = save_ask_record(
@@ -950,6 +1114,7 @@ def answer_question(
             "evidence": evidence,
             "status": "evidence_only",
             "query_route": query_route_payload,
+            "inferred_scope": query_scope_payload,
         }
         if save:
             result["record_id"] = save_ask_record(query, answer, evidence, "none", "evidence_only", db_path)
@@ -972,6 +1137,7 @@ def answer_question(
             "ai_error": str(exc),
             "status": "ai_failed",
             "query_route": query_route_payload,
+            "inferred_scope": query_scope_payload,
         }
         if save:
             result["record_id"] = save_ask_record(query, answer, evidence, model, "ai_failed", db_path)
@@ -981,6 +1147,7 @@ def answer_question(
         "evidence": evidence,
         "status": "answered",
         "query_route": query_route_payload,
+        "inferred_scope": query_scope_payload,
     }
     if save:
         result["record_id"] = save_ask_record(query, answer, evidence, model, "answered", db_path)

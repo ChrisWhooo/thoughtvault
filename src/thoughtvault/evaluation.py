@@ -29,6 +29,8 @@ class EvaluationCase:
     case_id: str
     query: str
     expected_route: str | None = None
+    expected_status: str | None = None
+    expected_first_path: str | None = None
     expected_paths: tuple[str, ...] = ()
     expected_evidence_kinds: tuple[str, ...] = ()
     answer_contains: tuple[str, ...] = ()
@@ -73,6 +75,16 @@ def load_evaluation_cases(path: str | Path) -> list[EvaluationCase]:
                     if raw.get("expected_route") is not None
                     else None
                 ),
+                expected_status=(
+                    str(raw["expected_status"])
+                    if raw.get("expected_status") is not None
+                    else None
+                ),
+                expected_first_path=(
+                    str(raw["expected_first_path"])
+                    if raw.get("expected_first_path") is not None
+                    else None
+                ),
                 expected_paths=tuple(str(value) for value in raw.get("expected_paths", [])),
                 expected_evidence_kinds=tuple(
                     str(value) for value in raw.get("expected_evidence_kinds", [])
@@ -93,12 +105,24 @@ def _evaluate_case(case: EvaluationCase, result: dict[str, object]) -> Evaluatio
     evidence_kinds = tuple(dict.fromkeys(str(item.kind) for item in evidence))
     raw_route = result.get("query_route") or {}
     actual_route = str(raw_route.get("route", "")) if isinstance(raw_route, dict) else ""
+    actual_status = str(result.get("status", ""))
     checks = []
     passed = True
 
     if case.expected_route:
         matched = actual_route == case.expected_route
         checks.append(f"{'PASS' if matched else 'FAIL'} route:{case.expected_route}")
+        passed = passed and matched
+
+    if case.expected_status:
+        matched = actual_status == case.expected_status
+        checks.append(f"{'PASS' if matched else 'FAIL'} status:{case.expected_status}")
+        passed = passed and matched
+
+    if case.expected_first_path:
+        first_path = source_paths[0] if source_paths else ""
+        matched = case.expected_first_path.lower() in first_path.lower()
+        checks.append(f"{'PASS' if matched else 'FAIL'} first_source:{case.expected_first_path}")
         passed = passed and matched
 
     for expected_path in case.expected_paths:

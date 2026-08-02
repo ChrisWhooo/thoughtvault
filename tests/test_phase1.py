@@ -46,7 +46,7 @@ from thoughtvault.knowledge import (
 from thoughtvault.db import init_db
 from thoughtvault.recall import recall
 from thoughtvault.reference import build_reference_cards, search_reference_cards
-from thoughtvault.routing import classify_query
+from thoughtvault.routing import classify_query, infer_query_scope
 from thoughtvault.search import search
 from thoughtvault.sources import add_source
 from thoughtvault.synthesis import build_synthesis_notes, search_synthesis_notes
@@ -1042,6 +1042,18 @@ class Phase1ScanTests(unittest.TestCase):
         self.assertEqual(classify_query("帮我总结这些 Obsidian 同步笔记").route, "synthesis")
         self.assertEqual(classify_query("勤怠表资料在哪里？").route, "reference")
 
+    def test_query_scope_infers_months_topics_and_ambiguity(self) -> None:
+        explicit = infer_query_scope("2026年5月交通费多少？")
+        self.assertEqual(explicit.time_scope, ("2026-05",))
+        self.assertIn("transport_cost", explicit.measure_hints)
+        self.assertEqual(explicit.intent, "fact_lookup")
+        self.assertIsNone(explicit.ambiguity)
+
+        ambiguous = infer_query_scope("交通费多少？")
+        self.assertIn("transport_cost", ambiguous.measure_hints)
+        self.assertEqual(ambiguous.intent, "fact_lookup")
+        self.assertEqual(ambiguous.ambiguity, "missing_time_scope")
+
     def test_answer_and_evaluation_include_query_route(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1063,6 +1075,7 @@ class Phase1ScanTests(unittest.TestCase):
                 save=False,
             )
             self.assertEqual(result["query_route"]["route"], "fact")
+            self.assertEqual(result["inferred_scope"]["time_scope"], ["05"])
 
             suite = root / "phase11-routing.json"
             suite.write_text(
@@ -1082,6 +1095,56 @@ class Phase1ScanTests(unittest.TestCase):
                 encoding="utf-8",
             )
             summary = run_evaluation(suite, str(db_path), use_ai=False, embedding_model=None)
+            self.assertEqual(summary.failed, 0)
+
+    def test_ask_refuses_underspecified_fact_time_scope(self) -> None:
+        evidence = [
+            Evidence(
+                "S1", "demo", "may.md", "May", "fact:confirmed",
+                "2026-05 交通费合计：2,580 日元；审核状态：confirmed", 50,
+            ),
+            Evidence(
+                "S2", "demo", "june.md", "June", "fact:confirmed",
+                "2026-06 交通费合计：2,460 日元；审核状态：confirmed", 49,
+            ),
+        ]
+
+        def fake_answerer(query: str, db_path: str | None, **kwargs: object) -> dict[str, object]:
+            from thoughtvault.ask import ambiguous_scope_answer
+
+            scope = infer_query_scope(query)
+            scoped = ambiguous_scope_answer(scope, evidence)
+            self.assertIsNotNone(scoped)
+            answer, scope_payload = scoped
+            return {
+                "answer": answer,
+                "evidence": evidence,
+                "status": "scope_ambiguous",
+                "query_route": {"route": "fact"},
+                "inferred_scope": scope_payload,
+            }
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            suite = root / "scope.json"
+            suite.write_text(
+                json.dumps(
+                    {
+                        "cases": [
+                            {
+                                "id": "ambiguous-transport",
+                                "query": "交通费多少？",
+                                "expected_route": "fact",
+                                "expected_status": "scope_ambiguous",
+                                "answer_contains": ["多个可能的时间范围"],
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            summary = run_evaluation(suite, answerer=fake_answerer)
             self.assertEqual(summary.failed, 0)
 
     def test_ask_keeps_cjk_path_matches_when_query_has_extra_words(self) -> None:
@@ -1115,6 +1178,32 @@ class Phase1ScanTests(unittest.TestCase):
             self.assertEqual(result["status"], "routed_reference")
             self.assertIn("资料位置", result["answer"])
             self.assertIn("勤怠表-2026年05月.md", result["answer"])
+
+    def test_scope_aware_retrieval_prioritizes_matching_time_paths(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "forms"
+            (source / "202604").mkdir(parents=True)
+            (source / "202605").mkdir(parents=True)
+            (source / "202604" / "勤怠表.md").write_text(
+                "# 勤怠表\n\n2026年4月の勤務記録。\n",
+                encoding="utf-8",
+            )
+            (source / "202605" / "勤怠表.md").write_text(
+                "# 勤怠表\n\n2026年5月の勤務記録。\n",
+                encoding="utf-8",
+            )
+            db_path = root / "thoughtvault.sqlite"
+            add_source(str(source), ["company", "reference"], db_path=str(db_path))
+            scan(str(db_path))
+
+            evidence = retrieve_evidence(
+                "2026年5月勤怠表文件在哪里？",
+                str(db_path),
+                embedding_model=None,
+            )
+            self.assertTrue(evidence)
+            self.assertEqual(evidence[0].path, "202605/勤怠表.md")
 
     def test_ask_routes_recall_questions_to_document_memory_summary(self) -> None:
         with TemporaryDirectory() as tmp:

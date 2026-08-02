@@ -121,7 +121,7 @@ thoughtvault/
 
 ## Current Status
 
-Phase 11 has started. ThoughtVault now includes incremental local vector indexing, multilingual semantic retrieval, durable source-backed ask history, a reviewable structured-fact layer, confirmed-fact answer priority, deterministic conflict refusal, safe batch review, Markdown fact export, repeatable Phase 8/9 evaluation suites, generated source-backed wiki pages, knowledge page review states, stale detection, weak relationship discovery, explicit page merging, filtered lexical/semantic/hybrid search, rule-based query routing for fact, recall, reference, synthesis, knowledge, and evidence questions, and routed deterministic answers for reference lookup, recall-style questions, and generated knowledge pages.
+Phase 11 has started. ThoughtVault now includes incremental local vector indexing, multilingual semantic retrieval, durable source-backed ask history, a reviewable structured-fact layer, confirmed-fact answer priority, deterministic conflict refusal, safe batch review, Markdown fact export, repeatable Phase 8/9 evaluation suites, generated source-backed wiki pages, knowledge page review states, stale detection, weak relationship discovery, explicit page merging, filtered lexical/semantic/hybrid search, rule-based query routing for fact, recall, reference, synthesis, knowledge, and evidence questions, routed deterministic answers for reference lookup, recall-style questions, and generated knowledge pages, plus initial query-scope inference for time scopes, entities, document hints, measure hints, intent, and ambiguity.
 
 ## Next Step
 
@@ -821,7 +821,13 @@ Phase 11 adds:
 - routed deterministic `ask` answers for reference lookup questions
 - routed deterministic `ask` answers for recall-style document memory questions
 - routed deterministic `ask` answers for knowledge questions using generated Wiki pages first
+- `inferred_scope` metadata in `ask` results and JSON output
+- scope-aware retrieval scoring for time scopes, entities, document hints, and measure hints
+- route-aware reference evidence ordering that prefers document locations over fact values
+- ambiguity refusal for underspecified fact questions when multiple local time scopes match
 - `expected_route` checks in evaluation suites
+- `expected_status` checks in evaluation suites
+- `expected_first_path` checks in evaluation suites
 - stronger CJK path/title matching when natural questions add words such as "资料", "文件", or "在哪里"
 
 ## Current Limits
