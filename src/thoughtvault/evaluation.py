@@ -28,6 +28,7 @@ REFUSAL_MARKERS = (
 class EvaluationCase:
     case_id: str
     query: str
+    expected_route: str | None = None
     expected_paths: tuple[str, ...] = ()
     expected_evidence_kinds: tuple[str, ...] = ()
     answer_contains: tuple[str, ...] = ()
@@ -67,6 +68,11 @@ def load_evaluation_cases(path: str | Path) -> list[EvaluationCase]:
             EvaluationCase(
                 case_id=str(raw.get("id") or f"case-{index}"),
                 query=str(raw["query"]).strip(),
+                expected_route=(
+                    str(raw["expected_route"])
+                    if raw.get("expected_route") is not None
+                    else None
+                ),
                 expected_paths=tuple(str(value) for value in raw.get("expected_paths", [])),
                 expected_evidence_kinds=tuple(
                     str(value) for value in raw.get("expected_evidence_kinds", [])
@@ -85,8 +91,15 @@ def _evaluate_case(case: EvaluationCase, result: dict[str, object]) -> Evaluatio
     evidence = result.get("evidence") or []
     source_paths = tuple(dict.fromkeys(str(item.path) for item in evidence))
     evidence_kinds = tuple(dict.fromkeys(str(item.kind) for item in evidence))
+    raw_route = result.get("query_route") or {}
+    actual_route = str(raw_route.get("route", "")) if isinstance(raw_route, dict) else ""
     checks = []
     passed = True
+
+    if case.expected_route:
+        matched = actual_route == case.expected_route
+        checks.append(f"{'PASS' if matched else 'FAIL'} route:{case.expected_route}")
+        passed = passed and matched
 
     for expected_path in case.expected_paths:
         matched = any(expected_path.lower() in path.lower() for path in source_paths)

@@ -257,8 +257,18 @@ Features:
 - support lexical, semantic, and hybrid search modes
 - filter search by source category, source name, and document path
 - keep lexical and semantic filters consistent
-- add query routing for fact, recall, knowledge page, and raw evidence questions
+- add query routing for fact, recall, reference, synthesis, knowledge page, and raw evidence questions
 - add evaluation cases for ambiguous natural-language memory questions
+
+Current progress:
+
+- lexical, semantic, and hybrid search modes are available from the CLI
+- search filters are shared across lexical and semantic retrieval
+- `ask` results include rule-based query route metadata
+- `ask` uses routed deterministic answers for reference lookup and recall-style questions
+- knowledge questions use generated Wiki pages before falling back to raw evidence
+- evaluation suites can assert `expected_route`
+- CJK path/title matches are boosted so natural questions with extra words keep their core evidence
 
 Exit criteria:
 

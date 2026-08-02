@@ -18,6 +18,8 @@ from .facts import (
     search_confirmed_fact_conflicts,
     search_confirmed_facts,
 )
+from .knowledge import search_knowledge_pages
+from .routing import QueryRoute, classify_query
 from .search import normalize_query
 from .synthesis import DEFAULT_OLLAMA_HOST, DEFAULT_OLLAMA_MODEL, generate_with_ollama
 
@@ -296,7 +298,8 @@ def retrieve_evidence(
                 """
             ).fetchall()
             for row in rows:
-                haystack = f"{row['title']} {row['path']} {row['content']}".lower()
+                path_title = f"{row['title']} {row['path']}".lower()
+                haystack = f"{path_title} {row['content']}".lower()
                 matched = [term for term in terms if term_matches(haystack, term)]
                 if not matched:
                     continue
@@ -311,6 +314,8 @@ def retrieve_evidence(
                     if not re.fullmatch(r"[a-z0-9_]+", term) and len(term) < 4
                 )
                 score = strong_score + min(short_score, 3.0)
+                if any(term_matches(path_title, term) for term in matched):
+                    score += 3.0
                 if query.lower() in haystack:
                     score += 8.0
                 score += _intent_bonus(query, haystack)
@@ -480,6 +485,14 @@ def build_answer_prompt(query: str, evidence: list[Evidence], strict: bool = Fal
             "Return only a concise answer with inline citations. Do not add a Sources or Evidence section.",
         ]
     )
+
+
+def query_route_to_dict(route: QueryRoute) -> dict[str, object]:
+    return {
+        "route": route.route,
+        "confidence": route.confidence,
+        "reason": route.reason,
+    }
 
 
 def save_ask_record(
@@ -703,6 +716,89 @@ def verified_direct_answer(query: str, evidence: list[Evidence]) -> str | None:
     return None
 
 
+def routed_reference_answer(evidence: list[Evidence], limit: int = 5) -> str | None:
+    if not evidence:
+        return None
+    lines = ["找到这些可能相关的资料位置："]
+    seen_paths: set[str] = set()
+    count = 0
+    for item in evidence:
+        if item.path in seen_paths:
+            continue
+        lines.append(f"- [{item.source_id}] {item.path}（source={item.source}）")
+        seen_paths.add(item.path)
+        count += 1
+        if count >= limit:
+            break
+    if count == 0:
+        return None
+    return "\n".join(lines)
+
+
+def routed_recall_answer(evidence: list[Evidence], limit: int = 5) -> str | None:
+    if not evidence:
+        return None
+    lines = ["找到这些可能相关的回忆线索："]
+    seen_paths: set[str] = set()
+    count = 0
+    for item in evidence:
+        if item.path in seen_paths:
+            continue
+        snippet = _compact(item.snippet, 220)
+        lines.append(f"- [{item.source_id}] {item.title}（{item.path}）：{snippet}")
+        seen_paths.add(item.path)
+        count += 1
+        if count >= limit:
+            break
+    if count == 0:
+        return None
+    return "\n".join(lines)
+
+
+def routed_knowledge_answer(
+    query: str,
+    db_path: str | None,
+    existing_evidence: list[Evidence],
+    limit: int = 5,
+) -> tuple[str, list[Evidence]] | None:
+    pages = search_knowledge_pages(query, db_path, limit=limit)
+    if not pages:
+        return None
+
+    knowledge_evidence = [
+        Evidence(
+            source_id=f"S{index}",
+            source="Wiki",
+            path=f"Wiki/{page['topic']}.md",
+            title=str(page["title"]),
+            kind="knowledge:page",
+            snippet=str(page["snippet"]),
+            score=80.0 - index,
+        )
+        for index, page in enumerate(pages, start=1)
+    ]
+    shifted_evidence = [
+        Evidence(
+            source_id=f"S{index}",
+            source=item.source,
+            path=item.path,
+            title=item.title,
+            kind=item.kind,
+            snippet=item.snippet,
+            score=item.score,
+        )
+        for index, item in enumerate(existing_evidence, start=len(knowledge_evidence) + 1)
+    ]
+
+    lines = ["找到这些已生成的知识页："]
+    for item, page in zip(knowledge_evidence, pages):
+        status = page.get("status", "unknown")
+        lines.append(f"- [{item.source_id}] {item.title}（status={status}）：{item.snippet}")
+    lines.append("")
+    lines.append("这些知识页仍然保留来源证据；如果页面状态不是 accepted，建议先 review 再作为长期知识使用。")
+    return "\n".join(lines), [*knowledge_evidence, *shifted_evidence]
+
+
 def answer_question(
     query: str,
     db_path: str | None = None,
@@ -717,6 +813,8 @@ def answer_question(
     embedding_model: str | None = None,
     embedder: Embedder = generate_embeddings_with_ollama,
 ) -> dict[str, object]:
+    query_route = classify_query(query)
+    query_route_payload = query_route_to_dict(query_route)
     evidence = retrieve_evidence(
         query,
         db_path,
@@ -726,25 +824,33 @@ def answer_question(
         timeout=timeout,
         embedder=embedder,
     )
+    if query_route.route == "knowledge":
+        knowledge_result = routed_knowledge_answer(query, db_path, evidence, limit=limit)
+        if knowledge_result is not None:
+            knowledge_answer, routed_evidence = knowledge_result
+            result: dict[str, object] = {
+                "answer": knowledge_answer,
+                "evidence": routed_evidence,
+                "answer_mode": "routed_knowledge",
+                "status": "routed_knowledge",
+                "query_route": query_route_payload,
+            }
+            if save:
+                result["record_id"] = save_ask_record(
+                    query, knowledge_answer, routed_evidence, "deterministic", "routed_knowledge", db_path
+                )
+            return result
+
     if not evidence:
         answer = "没有找到足够相关的本地证据。请先确认资料已 scan，或换一个更接近文件内容的关键词。"
-        result: dict[str, object] = {
+        result = {
             "answer": answer,
             "evidence": [],
             "status": "no_evidence",
+            "query_route": query_route_payload,
         }
         if save:
             result["record_id"] = save_ask_record(query, answer, [], "none", "no_evidence", db_path)
-        return result
-
-    if not use_ai:
-        lines = ["找到这些相关证据：", ""]
-        for item in evidence:
-            lines.append(f"- [{item.source_id}] {item.path}: {item.snippet}")
-        answer = "\n".join(lines)
-        result = {"answer": answer, "evidence": evidence, "status": "evidence_only"}
-        if save:
-            result["record_id"] = save_ask_record(query, answer, evidence, "none", "evidence_only", db_path)
         return result
 
     fact_conflicts = search_confirmed_fact_conflicts(query, db_path)
@@ -764,6 +870,7 @@ def answer_question(
             "evidence": evidence,
             "answer_mode": "fact_conflict",
             "status": "fact_conflict",
+            "query_route": query_route_payload,
         }
         if save:
             result["record_id"] = save_ask_record(
@@ -778,6 +885,7 @@ def answer_question(
             "evidence": evidence,
             "answer_mode": "verified_numeric",
             "status": "verified_numeric",
+            "query_route": query_route_payload,
         }
         if save:
             result["record_id"] = save_ask_record(
@@ -792,11 +900,59 @@ def answer_question(
             "evidence": evidence,
             "answer_mode": "verified_direct",
             "status": "verified_direct",
+            "query_route": query_route_payload,
         }
         if save:
             result["record_id"] = save_ask_record(
                 query, direct_answer, evidence, "deterministic", "verified_direct", db_path
             )
+        return result
+
+    if query_route.route == "reference":
+        reference_answer = routed_reference_answer(evidence, limit=limit)
+        if reference_answer is not None:
+            result = {
+                "answer": reference_answer,
+                "evidence": evidence,
+                "answer_mode": "routed_reference",
+                "status": "routed_reference",
+                "query_route": query_route_payload,
+            }
+            if save:
+                result["record_id"] = save_ask_record(
+                    query, reference_answer, evidence, "deterministic", "routed_reference", db_path
+                )
+            return result
+
+    if query_route.route == "recall":
+        recall_answer = routed_recall_answer(evidence, limit=limit)
+        if recall_answer is not None:
+            result = {
+                "answer": recall_answer,
+                "evidence": evidence,
+                "answer_mode": "routed_recall",
+                "status": "routed_recall",
+                "query_route": query_route_payload,
+            }
+            if save:
+                result["record_id"] = save_ask_record(
+                    query, recall_answer, evidence, "deterministic", "routed_recall", db_path
+                )
+            return result
+
+    if not use_ai:
+        lines = ["找到这些相关证据：", ""]
+        for item in evidence:
+            lines.append(f"- [{item.source_id}] {item.path}: {item.snippet}")
+        answer = "\n".join(lines)
+        result = {
+            "answer": answer,
+            "evidence": evidence,
+            "status": "evidence_only",
+            "query_route": query_route_payload,
+        }
+        if save:
+            result["record_id"] = save_ask_record(query, answer, evidence, "none", "evidence_only", db_path)
         return result
 
     prompt = build_answer_prompt(query, evidence, strict)
@@ -815,11 +971,17 @@ def answer_question(
             "evidence": evidence,
             "ai_error": str(exc),
             "status": "ai_failed",
+            "query_route": query_route_payload,
         }
         if save:
             result["record_id"] = save_ask_record(query, answer, evidence, model, "ai_failed", db_path)
         return result
-    result = {"answer": answer, "evidence": evidence, "status": "answered"}
+    result = {
+        "answer": answer,
+        "evidence": evidence,
+        "status": "answered",
+        "query_route": query_route_payload,
+    }
     if save:
         result["record_id"] = save_ask_record(query, answer, evidence, model, "answered", db_path)
     return result

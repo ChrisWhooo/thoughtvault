@@ -121,11 +121,11 @@ thoughtvault/
 
 ## Current Status
 
-Phase 11 has started. ThoughtVault now includes incremental local vector indexing, multilingual semantic retrieval, durable source-backed ask history, a reviewable structured-fact layer, confirmed-fact answer priority, deterministic conflict refusal, safe batch review, Markdown fact export, repeatable Phase 8/9 evaluation suites, generated source-backed wiki pages, knowledge page review states, stale detection, weak relationship discovery, explicit page merging, and filtered lexical/semantic/hybrid search.
+Phase 11 has started. ThoughtVault now includes incremental local vector indexing, multilingual semantic retrieval, durable source-backed ask history, a reviewable structured-fact layer, confirmed-fact answer priority, deterministic conflict refusal, safe batch review, Markdown fact export, repeatable Phase 8/9 evaluation suites, generated source-backed wiki pages, knowledge page review states, stale detection, weak relationship discovery, explicit page merging, filtered lexical/semantic/hybrid search, rule-based query routing for fact, recall, reference, synthesis, knowledge, and evidence questions, and routed deterministic answers for reference lookup, recall-style questions, and generated knowledge pages.
 
 ## Next Step
 
-The next implementation milestone is continuing retrieval reliability: add query routing, source-aware recall/ask filters, and evaluation cases for ambiguous natural-language questions before starting the local Web UI.
+The next implementation milestone is continuing retrieval reliability: use query routing to choose stronger retrieval paths, add source-aware recall/ask filters, and expand evaluation cases for ambiguous natural-language questions before starting the local Web UI.
 
 ## Usage
 
@@ -816,6 +816,13 @@ Phase 11 adds:
 - `thoughtvault search <query> --source <source-name>`
 - `thoughtvault search <query> --path <path-fragment>`
 - shared metadata filters for lexical and semantic search results
+- rule-based query routing for fact, recall, reference, synthesis, knowledge, and evidence questions
+- `query_route` metadata in `ask` results and JSON output
+- routed deterministic `ask` answers for reference lookup questions
+- routed deterministic `ask` answers for recall-style document memory questions
+- routed deterministic `ask` answers for knowledge questions using generated Wiki pages first
+- `expected_route` checks in evaluation suites
+- stronger CJK path/title matching when natural questions add words such as "资料", "文件", or "在哪里"
 
 ## Current Limits
 

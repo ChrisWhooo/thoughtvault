@@ -2,12 +2,25 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
+import re
 
 from .db import connect, init_db
 
 KNOWLEDGE_GENERATOR = "knowledge-rule-v1"
 TOPIC_TRACE_TYPES = {"technology", "heading"}
 VALID_KNOWLEDGE_STATUSES = {"generated", "accepted", "rejected", "stale"}
+QUERY_STOP_TERMS = {
+    "是什么",
+    "什么意思",
+    "解释",
+    "概念",
+    "知识页",
+    "wiki",
+    "とは",
+    "what",
+    "is",
+    "explain",
+}
 
 
 def _bullet_list(items: list[str], empty: str = "No source-backed items yet.") -> str:
@@ -21,6 +34,16 @@ def _compact(text: str, limit: int = 360) -> str:
     if len(compacted) <= limit:
         return compacted
     return compacted[: limit - 3].rstrip() + "..."
+
+
+def _query_tokens(query: str) -> list[str]:
+    tokens = []
+    for token in re.findall(r"[A-Za-z0-9_]+|[\u3040-\u30ff\u3400-\u9fff]+", query):
+        normalized = token.strip().casefold()
+        if not normalized or normalized in QUERY_STOP_TERMS:
+            continue
+        tokens.append(normalized)
+    return tokens
 
 
 def _topic_title(topic: str) -> str:
@@ -633,10 +656,10 @@ def search_knowledge_pages(
         raise ValueError(f"Unsupported knowledge page status: {status}")
     init_db(db_path)
     conn = connect(db_path)
-    tokens = [token.casefold() for token in query.split() if token.strip()]
+    tokens = _query_tokens(query)
     try:
         params: list[object] = []
-        where = ""
+        where = "WHERE status != 'rejected'"
         if status is not None:
             where = "WHERE status = ?"
             params.append(status)
@@ -651,16 +674,30 @@ def search_knowledge_pages(
         ).fetchall()
         results = []
         for row in rows:
-            haystack = f"{row['topic']} {row['title']} {row['body']}".casefold()
-            if tokens and not all(token in haystack for token in tokens):
+            topic = str(row["topic"]).casefold()
+            title = str(row["title"]).casefold()
+            body = str(row["body"]).casefold()
+            haystack = f"{topic} {title} {body}"
+            if tokens and not any(token in haystack for token in tokens):
                 continue
+            score = 0.0
+            for token in tokens:
+                if token == topic or token == title:
+                    score += 20.0
+                elif token in topic or token in title:
+                    score += 10.0
+                elif token in body:
+                    score += 1.0
             snippet = _compact(str(row["body"]), 240)
             item = dict(row)
             item.pop("body", None)
             item["snippet"] = snippet
+            item["score"] = score
             results.append(item)
-            if len(results) >= limit:
-                break
-        return results
+        return sorted(
+            results,
+            key=lambda item: (float(item["score"]), str(item["updated_at"]), int(item["id"])),
+            reverse=True,
+        )[:limit]
     finally:
         conn.close()

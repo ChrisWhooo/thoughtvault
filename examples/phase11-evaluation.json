@@ -1,0 +1,32 @@
+{
+  "name": "ThoughtVault Phase 11 routing and retrieval reliability evaluation",
+  "cases": [
+    {
+      "id": "route-transport-total",
+      "query": "5月交通费多少？",
+      "expected_route": "fact",
+      "expected_evidence_kinds": ["fact:confirmed"],
+      "answer_contains": ["5 月", "日元"]
+    },
+    {
+      "id": "route-recall-project",
+      "query": "我以前做过哪些 FastAPI 项目？",
+      "expected_route": "recall",
+      "expected_paths": ["02-project-thoughtvault.md"]
+    },
+    {
+      "id": "route-reference-document",
+      "query": "勤怠表文件在哪里？",
+      "expected_route": "reference",
+      "expected_paths": ["勤怠表"]
+    },
+    {
+      "id": "route-knowledge-page",
+      "query": "Ollama是什么？",
+      "expected_route": "knowledge",
+      "expected_paths": ["Wiki/ollama.md"],
+      "expected_evidence_kinds": ["knowledge:page"],
+      "answer_contains": ["知识页"]
+    }
+  ]
+}

@@ -46,6 +46,7 @@ from thoughtvault.knowledge import (
 from thoughtvault.db import init_db
 from thoughtvault.recall import recall
 from thoughtvault.reference import build_reference_cards, search_reference_cards
+from thoughtvault.routing import classify_query
 from thoughtvault.search import search
 from thoughtvault.sources import add_source
 from thoughtvault.synthesis import build_synthesis_notes, search_synthesis_notes
@@ -1033,6 +1034,154 @@ class Phase1ScanTests(unittest.TestCase):
             self.assertIn("Merged From: SQLite", target["body"])
             self.assertEqual(source["status"], "rejected")
             self.assertEqual(list_knowledge_links(str(db_path)), [])
+
+    def test_query_routing_classifies_phase11_question_types(self) -> None:
+        self.assertEqual(classify_query("5月和6月哪个月交通费更高？").route, "fact")
+        self.assertEqual(classify_query("我以前做过哪些 FastAPI 项目？").route, "recall")
+        self.assertEqual(classify_query("FastAPI 是什么？").route, "knowledge")
+        self.assertEqual(classify_query("帮我总结这些 Obsidian 同步笔记").route, "synthesis")
+        self.assertEqual(classify_query("勤怠表资料在哪里？").route, "reference")
+
+    def test_answer_and_evaluation_include_query_route(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "notes"
+            source.mkdir()
+            (source / "travel.md").write_text(
+                "# 2026 年 5 月差旅\n\n交通费合计：2,580 日元\n",
+                encoding="utf-8",
+            )
+            db_path = root / "thoughtvault.sqlite"
+            add_source(str(source), ["personal"], db_path=str(db_path))
+            scan(str(db_path))
+
+            result = answer_question(
+                "5月交通费多少？",
+                str(db_path),
+                use_ai=False,
+                embedding_model=None,
+                save=False,
+            )
+            self.assertEqual(result["query_route"]["route"], "fact")
+
+            suite = root / "phase11-routing.json"
+            suite.write_text(
+                json.dumps(
+                    {
+                        "cases": [
+                            {
+                                "id": "route-fact",
+                                "query": "5月交通费多少？",
+                                "expected_route": "fact",
+                                "expected_paths": ["travel.md"],
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            summary = run_evaluation(suite, str(db_path), use_ai=False, embedding_model=None)
+            self.assertEqual(summary.failed, 0)
+
+    def test_ask_keeps_cjk_path_matches_when_query_has_extra_words(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "forms"
+            source.mkdir()
+            (source / "勤怠表-2026年05月.md").write_text(
+                "# 勤怠表\n\n5 月の勤務記録。\n",
+                encoding="utf-8",
+            )
+            db_path = root / "thoughtvault.sqlite"
+            add_source(str(source), ["company", "reference"], db_path=str(db_path))
+            scan(str(db_path))
+
+            evidence = retrieve_evidence(
+                "勤怠表文件在哪里？",
+                str(db_path),
+                embedding_model=None,
+            )
+            self.assertTrue(evidence)
+            self.assertEqual(evidence[0].path, "勤怠表-2026年05月.md")
+
+            result = answer_question(
+                "勤怠表文件在哪里？",
+                str(db_path),
+                use_ai=False,
+                embedding_model=None,
+                save=False,
+            )
+            self.assertEqual(result["status"], "routed_reference")
+            self.assertIn("资料位置", result["answer"])
+            self.assertIn("勤怠表-2026年05月.md", result["answer"])
+
+    def test_ask_routes_recall_questions_to_document_memory_summary(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "projects"
+            source.mkdir()
+            (source / "fastapi-project.md").write_text(
+                "# FastAPI Memory Project\n\n"
+                "I worked on a FastAPI project using SQLite and local AI.\n",
+                encoding="utf-8",
+            )
+            db_path = root / "thoughtvault.sqlite"
+            add_source(str(source), ["project"], db_path=str(db_path))
+            scan(str(db_path))
+
+            result = answer_question(
+                "我以前做过哪些 FastAPI 项目？",
+                str(db_path),
+                use_ai=False,
+                embedding_model=None,
+                save=False,
+            )
+            self.assertEqual(result["query_route"]["route"], "recall")
+            self.assertEqual(result["status"], "routed_recall")
+            self.assertIn("回忆线索", result["answer"])
+            self.assertIn("fastapi-project.md", result["answer"])
+
+    def test_ask_routes_knowledge_questions_to_generated_pages(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db_path = root / "thoughtvault.sqlite"
+            init_db(str(db_path))
+            conn = sqlite3.connect(db_path)
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO knowledge_pages (
+                        topic, title, body, source_document_ids, source_chunk_ids,
+                        source_fact_ids, generator, status
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, 'test', 'generated')
+                    """,
+                    (
+                        "FastAPI",
+                        "FastAPI",
+                        "# FastAPI\n\nFastAPI is used for Python backend routes.",
+                        "[]",
+                        "[]",
+                        "[]",
+                    ),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+            result = answer_question(
+                "FastAPI是什么？",
+                str(db_path),
+                use_ai=False,
+                embedding_model=None,
+                save=False,
+            )
+            self.assertEqual(result["query_route"]["route"], "knowledge")
+            self.assertEqual(result["status"], "routed_knowledge")
+            self.assertIn("已生成的知识页", result["answer"])
+            self.assertEqual(result["evidence"][0].kind, "knowledge:page")
+            self.assertEqual(result["evidence"][0].path, "Wiki/FastAPI.md")
 
 
 if __name__ == "__main__":
