@@ -821,10 +821,13 @@ Phase 11 adds:
 - routed deterministic `ask` answers for reference lookup questions
 - routed deterministic `ask` answers for recall-style document memory questions
 - routed deterministic `ask` answers for knowledge questions using generated Wiki pages first
+- routed deterministic `ask` answers for synthesis questions using generated synthesis notes first
 - `inferred_scope` metadata in `ask` results and JSON output
 - scope-aware retrieval scoring for time scopes, entities, document hints, and measure hints
 - route-aware reference evidence ordering that prefers document locations over fact values
 - ambiguity refusal for underspecified fact questions when multiple local time scopes match
+- ambiguity refusal for missing entity/object scope in fact questions
+- ambiguity refusal for missing document type or topic in document lookup questions
 - `expected_route` checks in evaluation suites
 - `expected_status` checks in evaluation suites
 - `expected_first_path` checks in evaluation suites

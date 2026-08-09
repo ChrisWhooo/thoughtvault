@@ -21,7 +21,12 @@ from .facts import (
 from .knowledge import search_knowledge_pages
 from .routing import QueryRoute, QueryScope, classify_query, infer_query_scope
 from .search import normalize_query
-from .synthesis import DEFAULT_OLLAMA_HOST, DEFAULT_OLLAMA_MODEL, generate_with_ollama
+from .synthesis import (
+    DEFAULT_OLLAMA_HOST,
+    DEFAULT_OLLAMA_MODEL,
+    generate_with_ollama,
+    search_synthesis_notes,
+)
 
 AnswerGenerator = Callable[[str, str, str, float], str]
 
@@ -596,23 +601,80 @@ def _candidate_time_scopes(evidence: list[Evidence]) -> list[str]:
     return sorted(scopes)
 
 
+def _candidate_entities(evidence: list[Evidence]) -> list[str]:
+    entities = []
+    for item in evidence:
+        if item.kind != "fact:confirmed":
+            continue
+        subject = ""
+        if " | " in item.snippet:
+            subject = item.snippet.split(" | ", 1)[0].strip()
+        elif "：" in item.snippet:
+            subject = item.snippet.split("：", 1)[0].strip()
+        if not subject or re.fullmatch(r"20\d{2}-\d{2}(?:-\d{2})?", subject):
+            continue
+        if subject not in entities:
+            entities.append(subject)
+    return entities[:8]
+
+
+def _candidate_document_scopes(evidence: list[Evidence]) -> list[str]:
+    paths = []
+    for item in evidence:
+        if item.path.startswith("Wiki/"):
+            continue
+        if item.path not in paths:
+            paths.append(item.path)
+    return paths[:8]
+
+
 def ambiguous_scope_answer(scope: QueryScope, evidence: list[Evidence]) -> tuple[str, dict[str, object]] | None:
-    if scope.ambiguity != "missing_time_scope":
-        return None
-    candidate_scopes = _candidate_time_scopes(evidence)
-    if len(candidate_scopes) <= 1:
-        return None
-    labels = "、".join(candidate_scopes)
-    answer = (
-        "这个问题需要先限定月份或日期范围。"
-        f"我在本地资料中找到了多个可能的时间范围：{labels}。"
-        "请指定月份、日期或更具体的对象后再问。"
-    )
     scope_payload = query_scope_to_dict(scope)
-    scope_payload["candidate_time_scopes"] = candidate_scopes
-    scope_payload["ambiguity"] = "missing_time_scope"
-    scope_payload["reason"] = "multiple local fact time scopes match an underspecified question"
-    return answer, scope_payload
+    if scope.ambiguity == "missing_time_scope":
+        candidate_scopes = _candidate_time_scopes(evidence)
+        if len(candidate_scopes) <= 1:
+            return None
+        labels = "、".join(candidate_scopes)
+        answer = (
+            "这个问题需要先限定月份或日期范围。"
+            f"我在本地资料中找到了多个可能的时间范围：{labels}。"
+            "请指定月份、日期或更具体的对象后再问。"
+        )
+        scope_payload["candidate_time_scopes"] = candidate_scopes
+        scope_payload["reason"] = "multiple local fact time scopes match an underspecified question"
+        return answer, scope_payload
+
+    if scope.ambiguity == "missing_entity_scope":
+        candidate_entities = _candidate_entities(evidence)
+        if candidate_entities:
+            labels = "、".join(candidate_entities)
+            answer = (
+                "这个问题需要先限定对象。"
+                f"我在本地资料中找到了这些可能对象：{labels}。"
+                "请指定人、项目、地点或资料对象后再问。"
+            )
+            scope_payload["candidate_entities"] = candidate_entities
+        else:
+            answer = "这个问题需要先限定对象。请指定人、项目、地点或资料对象后再问。"
+        scope_payload["reason"] = "fact lookup is missing an entity or subject scope"
+        return answer, scope_payload
+
+    if scope.ambiguity == "missing_document_scope":
+        candidate_documents = _candidate_document_scopes(evidence)
+        if candidate_documents:
+            labels = "、".join(candidate_documents[:5])
+            answer = (
+                "这个问题需要先限定要找的资料类型或主题。"
+                f"我找到了多个可能资料：{labels}。"
+                "请指定资料名称、主题、月份、项目或对象后再问。"
+            )
+            scope_payload["candidate_documents"] = candidate_documents
+        else:
+            answer = "这个问题需要先限定要找的资料类型或主题。请指定资料名称、主题、月份、项目或对象后再问。"
+        scope_payload["reason"] = "document lookup is missing a document type, topic, or entity scope"
+        return answer, scope_payload
+
+    return None
 
 
 def save_ask_record(
@@ -935,6 +997,51 @@ def routed_knowledge_answer(
     return "\n".join(lines), [*knowledge_evidence, *shifted_evidence]
 
 
+def routed_synthesis_answer(
+    query: str,
+    db_path: str | None,
+    existing_evidence: list[Evidence],
+    limit: int = 5,
+) -> tuple[str, list[Evidence]] | None:
+    notes = search_synthesis_notes(query, db_path, limit=limit)
+    if not notes:
+        return None
+
+    synthesis_evidence = [
+        Evidence(
+            source_id=f"S{index}",
+            source=str(note["source"]),
+            path=f"Knowledge/{note['title']}.md",
+            title=str(note["title"]),
+            kind="synthesis:note",
+            snippet=str(note["snippet"]),
+            score=75.0 - index + float(note.get("score", 0.0)),
+        )
+        for index, note in enumerate(notes, start=1)
+    ]
+    shifted_evidence = [
+        Evidence(
+            source_id=f"S{index}",
+            source=item.source,
+            path=item.path,
+            title=item.title,
+            kind=item.kind,
+            snippet=item.snippet,
+            score=item.score,
+        )
+        for index, item in enumerate(existing_evidence, start=len(synthesis_evidence) + 1)
+    ]
+
+    lines = ["找到这些已生成的整理笔记："]
+    for item, note in zip(synthesis_evidence, notes):
+        status = note.get("status", "unknown")
+        note_type = note.get("note_type", "synthesis")
+        lines.append(f"- [{item.source_id}] {item.title}（type={note_type}, status={status}）：{item.snippet}")
+    lines.append("")
+    lines.append("这些整理笔记是源资料生成的草稿；如果需要更深入扩展，可以在此基础上继续追问。")
+    return "\n".join(lines), [*synthesis_evidence, *shifted_evidence]
+
+
 def answer_question(
     query: str,
     db_path: str | None = None,
@@ -995,6 +1102,24 @@ def answer_question(
             if save:
                 result["record_id"] = save_ask_record(
                     query, knowledge_answer, routed_evidence, "deterministic", "routed_knowledge", db_path
+                )
+            return result
+
+    if query_route.route == "synthesis":
+        synthesis_result = routed_synthesis_answer(query, db_path, evidence, limit=limit)
+        if synthesis_result is not None:
+            synthesis_answer, routed_evidence = synthesis_result
+            result = {
+                "answer": synthesis_answer,
+                "evidence": routed_evidence,
+                "answer_mode": "routed_synthesis",
+                "status": "routed_synthesis",
+                "query_route": query_route_payload,
+                "inferred_scope": query_scope_payload,
+            }
+            if save:
+                result["record_id"] = save_ask_record(
+                    query, synthesis_answer, routed_evidence, "deterministic", "routed_synthesis", db_path
                 )
             return result
 

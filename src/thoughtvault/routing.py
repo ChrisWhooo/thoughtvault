@@ -79,14 +79,23 @@ def infer_query_scope(query: str) -> QueryScope:
             measure_hints.append(hint)
 
     entity_candidates = []
+    subject_patterns = (
+        r"(.{2,40}?)(?:的)?(?:电话|電話|手机号|phone)",
+        r"(.{2,40}?)(?:住在哪里|住在哪|在哪里|在哪|場所|どこ)",
+    )
+    for pattern in subject_patterns:
+        for match in re.finditer(pattern, query, re.IGNORECASE):
+            candidate = match.group(1).strip(" ，,：:？?の的")
+            if candidate and candidate not in {"资料", "文件", "表格", "document", "file"}:
+                entity_candidates.append(candidate)
     for token in re.findall(r"[A-Za-z][A-Za-z0-9_.:-]{1,}|[\u3400-\u9fff]{2,}", query):
         lowered = token.casefold()
         marker_values = tuple(marker for markers in [*document_markers.values(), *measure_markers.values()] for marker in markers)
         if any(marker in lowered for marker in marker_values):
             continue
-        if lowered in {"什么", "多少", "哪里", "哪天", "哪个月", "时候", "资料", "文件"}:
+        if lowered in {"什么", "多少", "哪里", "哪天", "哪个月", "时候", "资料", "文件", "帮我总结"}:
             continue
-        if any(stop in lowered for stop in ("多少", "什么", "哪里", "哪天", "哪个月", "时候")):
+        if any(stop in lowered for stop in ("多少", "什么", "哪里", "哪天", "哪个月", "时候", "总结", "整理", "归纳")):
             continue
         entity_candidates.append(token)
     entities = tuple(dict.fromkeys(entity_candidates[:8]))
@@ -94,6 +103,11 @@ def infer_query_scope(query: str) -> QueryScope:
     intent = "open_lookup"
     if measure_hints:
         intent = "fact_lookup"
+    if _contains_any(normalized, ("资料", "文件", "表格", "document", "file")) and _contains_any(
+        normalized,
+        ("哪里", "在哪", "どこ", "where"),
+    ):
+        intent = "document_lookup"
     if document_hints and _contains_any(normalized, ("哪里", "在哪", "どこ", "where")):
         intent = "document_lookup"
     if _contains_any(normalized, ("总结", "整理", "归纳", "summarize", "synthesize")):
@@ -113,6 +127,9 @@ def infer_query_scope(query: str) -> QueryScope:
     ):
         ambiguity = "missing_entity_scope"
         reason = "fact lookup needs a subject or entity scope"
+    if intent == "document_lookup" and not document_hints and not entities:
+        ambiguity = "missing_document_scope"
+        reason = "document lookup needs a document type, topic, or entity scope"
 
     return QueryScope(
         time_scope=time_scope,

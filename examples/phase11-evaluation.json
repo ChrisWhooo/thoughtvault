@@ -16,6 +16,20 @@
       "answer_contains": ["多个可能的时间范围"]
     },
     {
+      "id": "scope-missing-entity",
+      "query": "电话是多少？",
+      "expected_route": "fact",
+      "expected_status": "scope_ambiguous",
+      "answer_contains": ["限定对象"]
+    },
+    {
+      "id": "scope-missing-document",
+      "query": "资料在哪里？",
+      "expected_route": "reference",
+      "expected_status": "scope_ambiguous",
+      "answer_contains": ["资料类型或主题"]
+    },
+    {
       "id": "route-recall-project",
       "query": "我以前做过哪些 FastAPI 项目？",
       "expected_route": "recall",
@@ -41,6 +55,14 @@
       "expected_paths": ["Wiki/ollama.md"],
       "expected_evidence_kinds": ["knowledge:page"],
       "answer_contains": ["知识页"]
+    },
+    {
+      "id": "route-synthesis-note",
+      "query": "帮我总结 ThoughtVault 项目",
+      "expected_route": "synthesis",
+      "expected_status": "routed_synthesis",
+      "expected_evidence_kinds": ["synthesis:note"],
+      "answer_contains": ["整理笔记"]
     }
   ]
 }

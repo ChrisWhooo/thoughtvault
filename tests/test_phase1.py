@@ -1054,6 +1054,18 @@ class Phase1ScanTests(unittest.TestCase):
         self.assertEqual(ambiguous.intent, "fact_lookup")
         self.assertEqual(ambiguous.ambiguity, "missing_time_scope")
 
+        missing_entity = infer_query_scope("电话是多少？")
+        self.assertEqual(missing_entity.intent, "fact_lookup")
+        self.assertEqual(missing_entity.ambiguity, "missing_entity_scope")
+
+        explicit_entity = infer_query_scope("武汉住在哪里？")
+        self.assertIn("武汉", explicit_entity.entities)
+        self.assertIsNone(explicit_entity.ambiguity)
+
+        missing_document = infer_query_scope("资料在哪里？")
+        self.assertEqual(missing_document.intent, "document_lookup")
+        self.assertEqual(missing_document.ambiguity, "missing_document_scope")
+
     def test_answer_and_evaluation_include_query_route(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1146,6 +1158,32 @@ class Phase1ScanTests(unittest.TestCase):
             )
             summary = run_evaluation(suite, answerer=fake_answerer)
             self.assertEqual(summary.failed, 0)
+
+    def test_ask_refuses_missing_entity_scope(self) -> None:
+        with TemporaryDirectory() as tmp:
+            result = answer_question(
+                "电话是多少？",
+                str(Path(tmp) / "thoughtvault.sqlite"),
+                use_ai=False,
+                embedding_model=None,
+                save=False,
+            )
+            self.assertEqual(result["status"], "scope_ambiguous")
+            self.assertEqual(result["inferred_scope"]["ambiguity"], "missing_entity_scope")
+            self.assertIn("限定对象", result["answer"])
+
+    def test_ask_refuses_missing_document_scope(self) -> None:
+        with TemporaryDirectory() as tmp:
+            result = answer_question(
+                "资料在哪里？",
+                str(Path(tmp) / "thoughtvault.sqlite"),
+                use_ai=False,
+                embedding_model=None,
+                save=False,
+            )
+            self.assertEqual(result["status"], "scope_ambiguous")
+            self.assertEqual(result["inferred_scope"]["ambiguity"], "missing_document_scope")
+            self.assertIn("限定要找的资料类型或主题", result["answer"])
 
     def test_ask_keeps_cjk_path_matches_when_query_has_extra_words(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -1271,6 +1309,33 @@ class Phase1ScanTests(unittest.TestCase):
             self.assertIn("已生成的知识页", result["answer"])
             self.assertEqual(result["evidence"][0].kind, "knowledge:page")
             self.assertEqual(result["evidence"][0].path, "Wiki/FastAPI.md")
+
+    def test_ask_routes_synthesis_questions_to_synthesis_notes(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "project"
+            source.mkdir()
+            (source / "fastapi.md").write_text(
+                "# FastAPI Project\n\n"
+                "The project uses FastAPI, SQLite, and local AI memory retrieval.\n",
+                encoding="utf-8",
+            )
+            db_path = root / "thoughtvault.sqlite"
+            add_source(str(source), ["project"], name="project-docs", db_path=str(db_path))
+            scan(str(db_path))
+            build_synthesis_notes(str(db_path))
+
+            result = answer_question(
+                "帮我总结 FastAPI 项目",
+                str(db_path),
+                use_ai=False,
+                embedding_model=None,
+                save=False,
+            )
+            self.assertEqual(result["query_route"]["route"], "synthesis")
+            self.assertEqual(result["status"], "routed_synthesis")
+            self.assertEqual(result["evidence"][0].kind, "synthesis:note")
+            self.assertIn("整理笔记", result["answer"])
 
 
 if __name__ == "__main__":

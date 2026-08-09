@@ -267,10 +267,13 @@ Current progress:
 - `ask` results include rule-based query route metadata
 - `ask` uses routed deterministic answers for reference lookup and recall-style questions
 - knowledge questions use generated Wiki pages before falling back to raw evidence
+- synthesis questions use generated synthesis notes before falling back to raw evidence
 - `ask` results include initial inferred scope metadata for time scopes, entities, document hints, measure hints, intent, and ambiguity
 - inferred scope contributes to evidence ranking across facts, lexical matches, semantic matches, and reference answers
 - reference answers prefer document-location evidence over confirmed fact values when the user asks where a document lives
 - underspecified fact questions refuse to guess when multiple local time scopes match
+- fact questions with missing entity/object scope ask the user to specify the subject
+- broad document lookup questions ask the user to specify a document type, topic, month, project, or object
 - evaluation suites can assert `expected_route`
 - evaluation suites can assert `expected_status`
 - evaluation suites can assert `expected_first_path`

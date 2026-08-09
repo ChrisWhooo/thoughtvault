@@ -13,6 +13,24 @@ SYNTHESIS_CATEGORIES = {"project", "memo", "conversation"}
 DEFAULT_OLLAMA_HOST = "http://127.0.0.1:11434"
 DEFAULT_OLLAMA_MODEL = "qwen3:14b"
 AI_PROMPT_VERSION = "ollama-v1"
+SYNTHESIS_QUERY_STOP_TERMS = {
+    "总结",
+    "整理",
+    "归纳",
+    "延展",
+    "比较",
+    "对比",
+    "帮我",
+    "这些",
+    "一下",
+    "summarize",
+    "organize",
+    "synthesize",
+    "compare",
+    "the",
+    "a",
+    "an",
+}
 
 Generator = Callable[[str, str, str, float], str]
 
@@ -358,9 +376,18 @@ def list_synthesis_notes(db_path: str | None = None) -> list[dict[str, object]]:
         conn.close()
 
 
+def _query_tokens(query: str) -> list[str]:
+    raw = normalize_query(query).replace(" OR ", " ").replace('"', "").lower().split()
+    return [
+        token
+        for token in raw
+        if token and token not in SYNTHESIS_QUERY_STOP_TERMS
+    ]
+
+
 def search_synthesis_notes(query: str, db_path: str | None = None, limit: int = 10) -> list[dict[str, object]]:
     init_db(db_path)
-    tokens = normalize_query(query).replace(" OR ", " ").replace('"', "").lower().split()
+    tokens = _query_tokens(query)
     conn = connect(db_path)
     try:
         rows = conn.execute(
@@ -380,14 +407,26 @@ def search_synthesis_notes(query: str, db_path: str | None = None, limit: int = 
         results = []
         for row in rows:
             haystack = f"{row['title']}\n{row['note_type']}\n{row['body']}".lower()
-            if all(token in haystack for token in tokens):
-                snippet = " ".join(str(row["body"]).split())[:240]
-                result = dict(row)
-                result.pop("body", None)
-                result["snippet"] = snippet
-                results.append(result)
-            if len(results) >= limit:
-                break
-        return results
+            if tokens and not any(token in haystack for token in tokens):
+                continue
+            score = 0.0
+            for token in tokens:
+                if token in str(row["title"]).lower():
+                    score += 10.0
+                elif token in str(row["note_type"]).lower():
+                    score += 4.0
+                elif token in haystack:
+                    score += 1.0
+            snippet = " ".join(str(row["body"]).split())[:240]
+            result = dict(row)
+            result.pop("body", None)
+            result["snippet"] = snippet
+            result["score"] = score
+            results.append(result)
+        return sorted(
+            results,
+            key=lambda item: (float(item["score"]), int(item["id"])),
+            reverse=True,
+        )[:limit]
     finally:
         conn.close()
